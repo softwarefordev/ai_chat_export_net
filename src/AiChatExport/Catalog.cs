@@ -4,6 +4,42 @@ using System.Text.Json;
 
 namespace AiChatExport;
 
+internal sealed record SessionSource(string Id, string Argument, string FilterLabel, string Column);
+
+internal static class SessionSources
+{
+    public static readonly SessionSource[] All =
+    [
+        new("cli", "cursor-cli", "Cursor-CLI", "Cu-CLI"),
+        new("ide", "cursor-ide", "Cursor-IDE", "Cu-IDE"),
+    ];
+
+    public static bool KnownArgument(string argument) => All.Any(item => item.Argument == argument);
+
+    public static string Column(string sourceId) =>
+        All.FirstOrDefault(item => item.Id == sourceId)?.Column ?? sourceId;
+
+    public static HashSet<string>? Allowed(IReadOnlyList<string> arguments)
+    {
+        if (arguments.Count == 0)
+        {
+            return null;
+        }
+
+        var chosen = new HashSet<string>();
+        foreach (var argument in arguments)
+        {
+            var match = All.FirstOrDefault(item => item.Argument == argument);
+            if (match is not null)
+            {
+                chosen.Add(match.Id);
+            }
+        }
+
+        return All.All(item => chosen.Contains(item.Id)) ? null : chosen;
+    }
+}
+
 internal sealed record Chat(
     string Id,
     string? Title,
@@ -11,11 +47,14 @@ internal sealed record Chat(
     string WorkspaceName,
     long UpdatedAtMs,
     bool HasStore,
-    string Path)
+    string Path,
+    string Source = "cli")
 {
     public string DisplayTitle => string.IsNullOrEmpty(Title) ? Id : Title!;
 
     public string UpdatedLabel => Catalog.FormatTimestamp(UpdatedAtMs);
+
+    public string SourceLabel => SessionSources.Column(Source);
 }
 
 internal static class Catalog
@@ -153,12 +192,76 @@ internal static class Catalog
             }
         }
 
+        SortNewest(chats);
+        return chats;
+    }
+
+    public static List<Chat> LoadSessions(string chatsRoot, string? projectsRoot, IList<string>? warnings = null)
+    {
+        var notes = warnings ?? new List<string>();
+        var chats = Load(chatsRoot, notes);
+        if (string.IsNullOrEmpty(projectsRoot) || !Directory.Exists(projectsRoot))
+        {
+            return chats;
+        }
+
+        var known = chats.Select(chat => chat.Id).ToHashSet(StringComparer.Ordinal);
+        foreach (var row in LoadIde(projectsRoot, notes))
+        {
+            if (!known.Contains(row.Id))
+            {
+                chats.Add(row);
+            }
+        }
+
+        SortNewest(chats);
+        return chats;
+    }
+
+    private static List<Chat> LoadIde(string root, IList<string> notes)
+    {
+        var rows = new List<Chat>();
+        foreach (var projectDir in Directory.EnumerateDirectories(root))
+        {
+            var transcripts = Path.Combine(projectDir, "agent-transcripts");
+            if (!Directory.Exists(transcripts))
+            {
+                continue;
+            }
+
+            foreach (var idDir in Directory.EnumerateDirectories(transcripts))
+            {
+                var id = Path.GetFileName(idDir);
+                var jsonl = Path.Combine(idDir, id + ".jsonl");
+                if (!File.Exists(jsonl))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    var title = IdeTranscript.FirstQueryLine(jsonl);
+                    var updated = new DateTimeOffset(File.GetLastWriteTimeUtc(jsonl)).ToUnixTimeMilliseconds();
+                    var (cwd, workspace) = IdeTranscript.Workspace(projectDir);
+                    rows.Add(new Chat(id, title, cwd, workspace, updated, true, idDir, "ide"));
+                }
+                catch (Exception exc) when (exc is IOException or UnauthorizedAccessException or JsonException or DecoderFallbackException or ArgumentException)
+                {
+                    notes.Add($"Unreadable IDE transcript {id}: {exc.Message}");
+                }
+            }
+        }
+
+        return rows;
+    }
+
+    private static void SortNewest(List<Chat> chats)
+    {
         chats.Sort(static (left, right) =>
         {
             var byTime = right.UpdatedAtMs.CompareTo(left.UpdatedAtMs);
             return byTime != 0 ? byTime : string.CompareOrdinal(right.Id, left.Id);
         });
-        return chats;
     }
 
     public static List<Chat> FilterWorkspace(IEnumerable<Chat> chats, string launchDir)

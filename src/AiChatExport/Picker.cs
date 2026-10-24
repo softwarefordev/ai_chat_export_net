@@ -8,6 +8,7 @@ internal static class Picker
 {
     public const int TimeWidth = 21;
     public const int WorkspaceCap = 24;
+    public const int SourceWidth = 6;
     public const string HideCursor = "\x1b[?25l";
     public const string ShowCursor = "\x1b[?25h";
     public const string BlockCursor = "\x1b[1 q";
@@ -21,7 +22,8 @@ internal static class Picker
         Action<string> write,
         int rows = 20,
         int? width = null,
-        string extension = ".html")
+        string extension = ".html",
+        IReadOnlySet<string>? sources = null)
     {
         var scope = "all";
         var selected = 0;
@@ -29,23 +31,25 @@ internal static class Picker
         Chat? naming = null;
         var draft = "";
         var defaultName = "";
+        HashSet<string>? allowed = sources is null ? null : new HashSet<string>(sources);
 
         List<Chat> Visible()
         {
-            return scope == "workspace" ? Catalog.FilterWorkspace(chats, launchDir) : chats.ToList();
+            var rowsForScope = scope == "workspace" ? Catalog.FilterWorkspace(chats, launchDir) : chats.ToList();
+            return allowed is null ? rowsForScope : rowsForScope.Where(chat => allowed.Contains(chat.Source)).ToList();
         }
 
         void Paint()
         {
             var shown = Visible();
             selected = shown.Count > 0 ? Math.Min(selected, shown.Count - 1) : 0;
-            write(RenderFrame(shown, selected, scope, theme, rows, width, showId) + HideCursor);
+            write(RenderFrame(shown, selected, scope, theme, rows, width, showId, allowed) + HideCursor);
         }
 
         void PaintName()
         {
             var shown = Visible();
-            var frame = RenderFrame(shown, selected, scope, theme, rows, width, showId);
+            var frame = RenderFrame(shown, selected, scope, theme, rows, width, showId, allowed);
             write(AppendNameLine(frame, draft, FrameWidth(width)));
         }
 
@@ -97,6 +101,11 @@ internal static class Picker
                 scope = scope == "all" ? "workspace" : "all";
                 selected = 0;
             }
+            else if (key is "s" or "S")
+            {
+                allowed = CycleSources(allowed);
+                selected = 0;
+            }
             else if (key == "backspace")
             {
             }
@@ -141,7 +150,8 @@ internal static class Picker
         string theme,
         int rows = 20,
         int? width = null,
-        bool showId = false)
+        bool showId = false,
+        IReadOnlySet<string>? sources = null)
     {
         var frameWidth = FrameWidth(width);
         var start = 0;
@@ -153,7 +163,7 @@ internal static class Picker
         var window = chats.Skip(start).Take(rows).ToList();
         var (titleWidth, workspaceWidth) = ColumnWidths(frameWidth, window.Select(chat => chat.WorkspaceName).ToList());
         var rule = new string('-', frameWidth);
-        var lines = new List<string> { Header(scope, frameWidth), rule };
+        var lines = new List<string> { Header(scope, frameWidth), SourceLine(sources), rule };
         if (window.Count == 0)
         {
             lines.Add("(no chats)");
@@ -169,13 +179,15 @@ internal static class Picker
                 + "  "
                 + Fit(chat.WorkspaceName, workspaceWidth)
                 + "  "
+                + Fit(chat.SourceLabel, SourceWidth)
+                + "  "
                 + FitRight(chat.UpdatedLabel, TimeWidth));
         }
 
         var count = chats.Count;
         var index = count > 0 ? selected + 1 : 0;
         lines.Add(rule);
-        lines.Add($"{index}/{count}  up/down move  left/right scope  Enter names the file  Esc closes  i id");
+        lines.Add($"{index}/{count}  up/down move  left/right scope  Enter names the file  Esc closes  i id  s source");
         lines.Add($"theme: {theme}");
         if (showId && chats.Count > 0 && selected >= 0 && selected < chats.Count)
         {
@@ -344,14 +356,52 @@ internal static class Picker
     {
         var longest = workspaceNames.Count == 0 ? 0 : workspaceNames.Max(name => name.Length);
         var workspace = Math.Min(WorkspaceCap, longest);
-        var title = frameWidth - 2 - 2 - workspace - 2 - TimeWidth;
+        var title = frameWidth - 2 - 2 - workspace - 2 - SourceWidth - 2 - TimeWidth;
         if (title < 1)
         {
-            workspace = Math.Max(0, frameWidth - 2 - 2 - 1 - 2 - TimeWidth);
-            title = Math.Max(0, frameWidth - 2 - 2 - workspace - 2 - TimeWidth);
+            workspace = Math.Max(0, frameWidth - 2 - 2 - 1 - 2 - SourceWidth - 2 - TimeWidth);
+            title = Math.Max(0, frameWidth - 2 - 2 - workspace - 2 - SourceWidth - 2 - TimeWidth);
         }
 
         return (title, workspace);
+    }
+
+    private static HashSet<string>? CycleSources(IReadOnlySet<string>? allowed)
+    {
+        var ids = SessionSources.All.Select(item => item.Id).ToList();
+        if (ids.Count == 0)
+        {
+            return null;
+        }
+
+        if (allowed is null || ids.All(allowed.Contains))
+        {
+            return [ids[0]];
+        }
+
+        if (allowed.Count == 1)
+        {
+            var index = ids.IndexOf(allowed.Single());
+            if (index >= 0)
+            {
+                return index + 1 < ids.Count ? [ids[index + 1]] : null;
+            }
+        }
+
+        return null;
+    }
+
+    private static string SourceLine(IReadOnlySet<string>? sources)
+    {
+        var every = sources is null || SessionSources.All.All(item => sources.Contains(item.Id));
+        var parts = new List<string> { every ? "All sources *" : "All sources" };
+        foreach (var item in SessionSources.All)
+        {
+            var marked = !every && sources is not null && sources.Contains(item.Id);
+            parts.Add(marked ? $"{item.FilterLabel} *" : item.FilterLabel);
+        }
+
+        return string.Join("    ", parts);
     }
 
     private static string Header(string scope, int frameWidth)

@@ -96,7 +96,9 @@ internal static class Exporter
         TextWriter? stdout = null,
         TextWriter? stderr = null,
         TimeSpan? activityInterval = null,
-        bool? stderrIsTerminal = null)
+        bool? stderrIsTerminal = null,
+        string? projectsRoot = null,
+        IReadOnlySet<string>? sources = null)
     {
         var output = stdout ?? Console.Out;
         var error = stderr ?? Console.Error;
@@ -116,7 +118,11 @@ internal static class Exporter
         using (var spin = new Activity(error, showActivity, activityInterval))
         {
             spin.Start();
-            chats = Catalog.Load(chatsRoot, warnings);
+            chats = Catalog.LoadSessions(chatsRoot, projectsRoot, warnings);
+            if (sources is not null)
+            {
+                chats = chats.Where(chat => sources.Contains(chat.Source)).ToList();
+            }
         }
 
         foreach (var note in warnings)
@@ -143,7 +149,10 @@ internal static class Exporter
             {
                 try
                 {
-                    var conversation = Store.Load(Path.Combine(chat.Path, "store.db"));
+                    var conversation = chat.Source == "ide"
+                        ? IdeTranscript.Load(chat.Path)
+                        : Store.Load(Path.Combine(chat.Path, "store.db"));
+                    var prompts = chat.Source == "ide" ? [] : Prompts(chat.Path);
                     if (conversation.Messages.Count == 0)
                     {
                         failure = $"Chat has no transcript: {chatId}";
@@ -152,7 +161,7 @@ internal static class Exporter
                     {
                         var transcript = TranscriptBuilder.Build(
                             conversation.Messages,
-                            Prompts(chat.Path),
+                            prompts,
                             verbose,
                             showTools,
                             showDetail,
@@ -222,7 +231,9 @@ internal static class Exporter
         bool showTools = false,
         bool showDetail = false,
         bool writeMarkdown = false,
-        Action<string>? paint = null)
+        Action<string>? paint = null,
+        string? projectsRoot = null,
+        IReadOnlySet<string>? sources = null)
     {
         int Body()
         {
@@ -235,7 +246,8 @@ internal static class Exporter
                     keys,
                     launchDir,
                     paint ?? frames.Add,
-                    extension: writeMarkdown ? ".md" : ".html");
+                    extension: writeMarkdown ? ".md" : ".html",
+                    sources: sources);
                 if (paint is null)
                 {
                     stdout.Write(string.Join("", frames));
@@ -255,7 +267,9 @@ internal static class Exporter
                     showDetail,
                     writeMarkdown,
                     result.FileName,
-                    stdout: stdout);
+                    stdout: stdout,
+                    projectsRoot: projectsRoot,
+                    sources: sources);
             }
             catch (PickerInterruptException)
             {
@@ -278,6 +292,8 @@ internal static class Exporter
         string? outDir = null;
         string? name = null;
         string? chatsRoot = null;
+        string? projectsRoot = null;
+        var sourceArgs = new List<string>();
 
         for (var index = 0; index < argv.Length; index++)
         {
@@ -362,6 +378,25 @@ internal static class Exporter
                     return 2;
                 }
             }
+            else if (arg == "--projects-root" || arg.StartsWith("--projects-root=", StringComparison.Ordinal))
+            {
+                projectsRoot = Value();
+                if (projectsRoot is null)
+                {
+                    return 2;
+                }
+            }
+            else if (arg == "--source" || arg.StartsWith("--source=", StringComparison.Ordinal))
+            {
+                var source = Value();
+                if (source is null || !SessionSources.KnownArgument(source))
+                {
+                    Console.Error.WriteLine("invalid source");
+                    return 2;
+                }
+
+                sourceArgs.Add(source);
+            }
             else
             {
                 Console.Error.WriteLine($"unrecognized argument: {arg}");
@@ -382,7 +417,9 @@ internal static class Exporter
         }
 
         chatsRoot ??= Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cursor", "chats");
+        projectsRoot ??= Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cursor", "projects");
         outDir ??= Directory.GetCurrentDirectory();
+        var sources = SessionSources.Allowed(sourceArgs);
         if (!string.IsNullOrEmpty(chatId))
         {
             return ExportSession(
@@ -394,11 +431,13 @@ internal static class Exporter
                 tools,
                 detail,
                 markdown,
-                outputPath: name);
+                outputPath: name,
+                projectsRoot: projectsRoot,
+                sources: sources);
         }
 
         var warnings = new List<string>();
-        var chats = Catalog.Load(chatsRoot, warnings);
+        var chats = Catalog.LoadSessions(chatsRoot, projectsRoot, warnings);
         foreach (var note in warnings)
         {
             Console.Error.WriteLine(note);
@@ -420,7 +459,8 @@ internal static class Exporter
                             ReadKeys(),
                             Directory.GetCurrentDirectory(),
                             frame => WritePickerFrame(Console.Out, frame),
-                            extension: markdown ? ".md" : ".html");
+                            extension: markdown ? ".md" : ".html",
+                            sources: sources);
                         return 0;
                     }
                     catch (PickerInterruptException)
@@ -444,7 +484,9 @@ internal static class Exporter
                 tools,
                 detail,
                 markdown,
-                picked.FileName);
+                picked.FileName,
+                projectsRoot: projectsRoot,
+                sources: sources);
         }
         finally
         {
@@ -454,9 +496,9 @@ internal static class Exporter
 
     public const string HelpText =
         """
-        usage: ai-chat-export [--id ID] [--theme {terminal-dark,terminal-light,dark-web,light-web}] [--tools] [--verbose] [--detail] [--markdown] [--out DIR] [--name PATH] [--chats-root DIR]
+        usage: ai-chat-export [--id ID] [--theme {terminal-dark,terminal-light,dark-web,light-web}] [--tools] [--verbose] [--detail] [--markdown] [--out DIR] [--name PATH] [--chats-root DIR] [--projects-root DIR] [--source {cursor-cli,cursor-ide}]
 
-        Export a Cursor agent session to HTML. Pass --markdown to write Markdown instead. In the picker, Enter asks for a file name. The title file name is the default.
+        Export a Cursor agent session to HTML. Pass --markdown to write Markdown instead. The picker lists Cursor agent chats and Cursor IDE transcripts. In the picker, Enter asks for a file name. The title file name is the default. s switches the source filter.
 
         options:
           --id ID             Chat id to export. Omit to open the picker.
@@ -468,7 +510,10 @@ internal static class Exporter
           --markdown          Write a Markdown file instead of the HTML page.
           --out DIR           Directory for the export files.
           --name PATH         File path to write when --id is set, including the directory and extension. Replaces --out. Requires --id.
-          --chats-root DIR    Catalog root. Defaults to ~/.cursor/chats.
+          --chats-root DIR    Agent chat catalog. Defaults to ~/.cursor/chats.
+          --projects-root DIR Cursor IDE projects root. Defaults to ~/.cursor/projects.
+          --source {cursor-cli,cursor-ide}
+                              Limit the list to one store. Repeat to include both. The picker column shows Cu-CLI or Cu-IDE.
           -h, --help          show this help message and exit
 
         """;

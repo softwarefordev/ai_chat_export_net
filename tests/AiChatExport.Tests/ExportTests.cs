@@ -83,7 +83,7 @@ public class ExportTests : IDisposable
         Assert.DoesNotContain("#161616", markdown, StringComparison.Ordinal);
         Assert.DoesNotContain("#f7f7f4", markdown, StringComparison.Ordinal);
         var cliOut = Path.Combine(_out, "cli");
-        Assert.Equal(0, Exporter.Run(["--id", "chat-1", "--chats-root", _chats, "--out", cliOut, "--markdown"]));
+        Assert.Equal(0, Exporter.Run(["--id", "chat-1", "--chats-root", _chats, "--projects-root", Path.Combine(_root, "no-projects"), "--out", cliOut, "--markdown"]));
         Assert.True(File.Exists(Path.Combine(cliOut, "Fantasy Map Maker.md")));
         Assert.False(File.Exists(Path.Combine(cliOut, "Fantasy Map Maker.html")));
     }
@@ -312,7 +312,7 @@ public class ExportTests : IDisposable
         foreach (var theme in HtmlRenderer.ThemeNames)
         {
             var dir = Path.Combine(_out, theme);
-            Assert.Equal(0, Exporter.Run(["--id", "chat-1", "--chats-root", _chats, "--out", dir, "--theme", theme]));
+            Assert.Equal(0, Exporter.Run(["--id", "chat-1", "--chats-root", _chats, "--projects-root", Path.Combine(_root, "no-projects"), "--out", dir, "--theme", theme]));
             Assert.True(File.Exists(Path.Combine(dir, "Fantasy Map Maker.html")));
         }
 
@@ -328,5 +328,190 @@ public class ExportTests : IDisposable
         }
 
         Assert.False(Directory.Exists(Path.Combine(_out, "nope")));
+    }
+
+    [Fact]
+    public void Ide_id_writes_html_and_leaves_the_transcript_unchanged()
+    {
+        var projects = Path.Combine(_root, "projects");
+        var launch = Path.Combine(_root, "SoggyMapMaker");
+        Directory.CreateDirectory(launch);
+        var (jsonl, trusted) = WriteIde(projects, "room", "River map", "The river is drawn.", launch);
+        var jsonlBytes = File.ReadAllBytes(jsonl);
+        var trustedBytes = File.ReadAllBytes(trusted);
+        var stdout = new StringWriter();
+        var code = Exporter.Run([
+            "--id", "room",
+            "--chats-root", Path.Combine(_root, "missing-chats"),
+            "--projects-root", projects,
+            "--out", _out,
+        ]);
+        Assert.Equal(0, code);
+        var htmlPath = Path.Combine(_out, "River map.html");
+        Assert.True(File.Exists(htmlPath));
+        Assert.False(File.Exists(Path.Combine(_out, "River map.md")));
+        var html = File.ReadAllText(htmlPath);
+        Assert.Contains("River map", html, StringComparison.Ordinal);
+        Assert.Contains("SoggyMapMaker", html, StringComparison.Ordinal);
+        Assert.Contains("The river is drawn.", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("Cu-CLI", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("Cu-IDE", html, StringComparison.Ordinal);
+        Assert.Equal(jsonlBytes, File.ReadAllBytes(jsonl));
+        Assert.Equal(trustedBytes, File.ReadAllBytes(trusted));
+        _ = stdout;
+
+        var markdownOut = Path.Combine(_out, "md");
+        Assert.Equal(0, Exporter.Run([
+            "--id", "room",
+            "--chats-root", Path.Combine(_root, "missing-chats"),
+            "--projects-root", projects,
+            "--out", markdownOut,
+            "--markdown",
+        ]));
+        Assert.True(File.Exists(Path.Combine(markdownOut, "River map.md")));
+        Assert.False(File.Exists(Path.Combine(markdownOut, "River map.html")));
+    }
+
+    [Fact]
+    public void Shared_id_exports_the_agent_chat()
+    {
+        var messages = new List<System.Text.Json.Nodes.JsonObject>
+        {
+            Support.Message("user", "<user_query>\nAGENT_QUERY_TEXT\n</user_query>"),
+            Support.Message("assistant", "agent reply"),
+        };
+        Support.WriteChat(_chats, "shared", _root, "Agent query", 1_000, messages, []);
+        WriteIde(Path.Combine(_root, "projects"), "shared", "IDE_QUERY_TEXT", "ide reply", _root);
+        var stdout = new StringWriter();
+        var code = Exporter.ExportSession(
+            _chats,
+            "shared",
+            _out,
+            stdout: stdout,
+            projectsRoot: Path.Combine(_root, "projects"));
+        Assert.Equal(0, code);
+        var html = File.ReadAllText(Path.Combine(_out, "Agent query.html"));
+        Assert.Contains("AGENT_QUERY_TEXT", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("IDE_QUERY_TEXT", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("ide reply", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Source_flag_filters_the_picker_and_rejects_unknown_values()
+    {
+        Chat();
+        var projects = Path.Combine(_root, "projects");
+        WriteIde(projects, "room", "River map", "The river is drawn.", _root);
+        var sessions = Catalog.LoadSessions(_chats, projects);
+        var stdout = new StringWriter();
+        var code = Exporter.ExportWithPicker(
+            sessions,
+            "terminal-dark",
+            ["esc"],
+            _root,
+            _out,
+            false,
+            _chats,
+            stdout,
+            projectsRoot: projects,
+            sources: SessionSources.Allowed(["cursor-cli"]));
+        Assert.Equal(0, code);
+        Assert.Contains("Cursor-CLI *", stdout.ToString(), StringComparison.Ordinal);
+        Assert.Contains("Fantasy Map Maker", stdout.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("River map", stdout.ToString(), StringComparison.Ordinal);
+
+        stdout = new StringWriter();
+        code = Exporter.ExportWithPicker(
+            sessions,
+            "terminal-dark",
+            ["esc"],
+            _root,
+            _out,
+            false,
+            _chats,
+            stdout,
+            projectsRoot: projects,
+            sources: SessionSources.Allowed(["cursor-cli", "cursor-ide"]));
+        Assert.Equal(0, code);
+        var both = stdout.ToString();
+        Assert.Contains("All sources *", both, StringComparison.Ordinal);
+        Assert.Contains("Fantasy Map Maker", both, StringComparison.Ordinal);
+        Assert.Contains("River map", both, StringComparison.Ordinal);
+
+        stdout = new StringWriter();
+        Exporter.ExportWithPicker(
+            sessions,
+            "terminal-dark",
+            ["s", "esc"],
+            _root,
+            _out,
+            false,
+            _chats,
+            stdout,
+            projectsRoot: projects,
+            sources: SessionSources.Allowed(["cursor-cli"]));
+        var moved = stdout.ToString();
+        Assert.Contains("Cursor-IDE *", moved, StringComparison.Ordinal);
+        Assert.Contains("River map", moved, StringComparison.Ordinal);
+
+        var error = Console.Error;
+        var errors = new StringWriter();
+        Console.SetError(errors);
+        try
+        {
+            Assert.Equal(1, Exporter.Run([
+                "--id", "chat-1",
+                "--source", "cursor-ide",
+                "--chats-root", _chats,
+                "--projects-root", projects,
+                "--out", Path.Combine(_out, "filtered"),
+            ]));
+            Assert.Equal(2, Exporter.Run([
+                "--id", "chat-1",
+                "--source", "other",
+                "--chats-root", _chats,
+                "--projects-root", projects,
+                "--out", Path.Combine(_out, "rejected"),
+            ]));
+        }
+        finally
+        {
+            Console.SetError(error);
+        }
+
+        Assert.Contains("Chat not found", errors.ToString(), StringComparison.Ordinal);
+        Assert.False(Directory.Exists(Path.Combine(_out, "filtered")));
+        Assert.False(Directory.Exists(Path.Combine(_out, "rejected")));
+    }
+
+    private static (string Jsonl, string Trusted) WriteIde(
+        string projectsRoot,
+        string transcriptId,
+        string query,
+        string reply,
+        string workspace)
+    {
+        var project = Path.Combine(projectsRoot, "demo");
+        Directory.CreateDirectory(project);
+        var trusted = Path.Combine(project, ".workspace-trusted");
+        File.WriteAllText(trusted, System.Text.Json.JsonSerializer.Serialize(new { workspacePath = workspace }));
+        var folder = Path.Combine(project, "agent-transcripts", transcriptId);
+        Directory.CreateDirectory(folder);
+        var jsonl = Path.Combine(folder, transcriptId + ".jsonl");
+        var lines = new[]
+        {
+            System.Text.Json.JsonSerializer.Serialize(new
+            {
+                role = "user",
+                message = new { content = new[] { new { type = "text", text = $"<user_query>\n{query}\n</user_query>" } } },
+            }),
+            System.Text.Json.JsonSerializer.Serialize(new
+            {
+                role = "assistant",
+                message = new { content = new[] { new { type = "text", text = reply } } },
+            }),
+        };
+        File.WriteAllText(jsonl, string.Join('\n', lines) + "\n");
+        return (jsonl, trusted);
     }
 }

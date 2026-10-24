@@ -10,7 +10,9 @@ Build the console app and run it with `dotnet run`.
 dotnet run --project src/AiChatExport -- --help
 ```
 
-The list shows the title, workspace, and time in aligned columns. Up and Down move. Left and Right switch All chats and This workspace. Enter asks for a file name. The chat list stays on screen. Esc closes. `i` shows the selected chat id.
+The list shows Cursor agent chats from `~/.cursor/chats` and Cursor IDE transcripts from `~/.cursor/projects`. Columns are the title, workspace, source, and time. The source column is `Cu-CLI` for an agent chat and `Cu-IDE` for an IDE transcript. Up and Down move. Left and Right switch All chats and This workspace. `s` switches All sources, Cursor-CLI, and Cursor-IDE. Enter asks for a file name. The chat list stays on screen. Esc closes. `i` shows the selected chat id.
+
+`--source cursor-cli` or `--source cursor-ide` limits the list to one store. Repeat `--source` to include both. `--projects-root` selects the IDE tree.
 
 ```bash
 dotnet run --project src/AiChatExport -- --id <chat-id> --out ./exports
@@ -18,4 +20,4 @@ dotnet run --project src/AiChatExport -- --id <chat-id> --markdown
 dotnet run --project src/AiChatExport -- --id <chat-id> --name ./exports/session.html
 ```
 
-`--name` writes that file path instead of a title-named file. `--name` requires `--id`. Passing `--name` with `--out` is an error. The tool only reads the chat store.
+`--name` writes that file path instead of a title-named file. `--name` requires `--id`. Passing `--name` with `--out` is an error. The tool only reads the chat store and the IDE transcript.

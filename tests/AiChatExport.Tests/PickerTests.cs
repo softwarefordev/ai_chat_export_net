@@ -36,25 +36,30 @@ public class PickerTests : IDisposable
     {
         const int width = 72;
         var shortChat = Row("Map", "SoggyMapMaker", "short", new DateTime(2026, 9, 1, 9, 5, 0));
-        var longTitle = Row(new string('T', 80), "SpiralBench", "long", new DateTime(2026, 8, 15, 16, 42, 0));
+        var longTitle = Row(new string('T', 80), "SpiralBench", "long", new DateTime(2026, 8, 15, 16, 42, 0), "ide");
         var frame = Picker.RenderFrame([longTitle, shortChat], 0, "all", "dark", width: width);
         var lines = frame.Split('\n');
-        Assert.Equal(new string('-', width), lines[1]);
+        Assert.Contains("All sources *", lines[1], StringComparison.Ordinal);
+        Assert.Equal(new string('-', width), lines[2]);
         Assert.Equal(width, lines[0].Length);
         Assert.Equal("Last updated".PadLeft(Picker.TimeWidth), lines[0][^Picker.TimeWidth..]);
-        Assert.StartsWith("> ", lines[2]);
-        Assert.StartsWith("  ", lines[3]);
-        Assert.EndsWith("...", lines[2].Split("  ", 2)[0]);
-        Assert.Equal(longTitle.UpdatedLabel.PadLeft(Picker.TimeWidth), lines[2][^Picker.TimeWidth..]);
-        Assert.Equal(shortChat.UpdatedLabel.PadLeft(Picker.TimeWidth), lines[3][^Picker.TimeWidth..]);
+        Assert.StartsWith("> ", lines[3]);
+        Assert.StartsWith("  ", lines[4]);
+        Assert.EndsWith("...", lines[3].Split("  ", 2)[0]);
+        Assert.Equal(longTitle.UpdatedLabel.PadLeft(Picker.TimeWidth), lines[3][^Picker.TimeWidth..]);
+        Assert.Equal(shortChat.UpdatedLabel.PadLeft(Picker.TimeWidth), lines[4][^Picker.TimeWidth..]);
         Assert.NotEqual(longTitle.UpdatedLabel.Length, shortChat.UpdatedLabel.Length);
-        var workspaceAt = lines[2].IndexOf("SpiralBench", StringComparison.Ordinal);
-        Assert.Equal(workspaceAt, lines[3].IndexOf("SoggyMapMaker", StringComparison.Ordinal));
+        var workspaceAt = lines[3].IndexOf("SpiralBench", StringComparison.Ordinal);
+        Assert.Equal(workspaceAt, lines[4].IndexOf("SoggyMapMaker", StringComparison.Ordinal));
+        var sourceAt = lines[3].IndexOf("Cu-IDE", StringComparison.Ordinal);
+        Assert.Equal(sourceAt, lines[4].IndexOf("Cu-CLI", StringComparison.Ordinal));
+        Assert.True(sourceAt > workspaceAt);
 
         var wideWorkspace = Row("Title", new string('W', 40), "wide", new DateTime(2026, 8, 15, 16, 42, 0));
         var wide = Picker.RenderFrame([wideWorkspace], 0, "workspace", "dark", width: width);
-        var row = wide.Split('\n')[2];
-        var cell = row[^(Picker.TimeWidth + 2 + 24)..^(Picker.TimeWidth + 2)];
+        var row = wide.Split('\n')[3];
+        var beforeTime = Picker.TimeWidth + 2 + Picker.SourceWidth + 2;
+        var cell = row[^(beforeTime + 24)..^beforeTime];
         Assert.Equal(new string('W', 21) + "...", cell);
         Assert.Contains("This workspace *", wide.Split('\n')[0], StringComparison.Ordinal);
     }
@@ -231,9 +236,55 @@ public class PickerTests : IDisposable
         Assert.Contains("\x1b[0 q", cursor.ToString(), StringComparison.Ordinal);
     }
 
-    private static Chat Row(string title, string workspace, string id, DateTime moment)
+    [Fact]
+    public void Source_key_cycles_filters_and_types_on_the_name_line()
     {
-        return new Chat(id, title, workspace, workspace, new DateTimeOffset(moment).ToUnixTimeMilliseconds(), true, ".");
+        var ide = Row("River map", "Other", "ide-1", new DateTime(2026, 8, 15, 16, 40, 0), "ide");
+        var cli = Row("Fantasy Map Maker", _launch, "cli-1", new DateTime(2026, 8, 15, 16, 42, 0));
+        var frames = new List<string>();
+        Picker.Run([ide, cli], "terminal-dark", ["s", "S", "s", "esc"], _launch, frames.Add, width: 80);
+        Assert.Contains("s source", frames[0], StringComparison.Ordinal);
+        Assert.Contains("All sources *", frames[0], StringComparison.Ordinal);
+        Assert.Contains("Cursor-CLI *", frames[1], StringComparison.Ordinal);
+        Assert.DoesNotContain("River map", frames[1], StringComparison.Ordinal);
+        Assert.Contains("Cursor-IDE *", frames[2], StringComparison.Ordinal);
+        Assert.Contains("River map", frames[2], StringComparison.Ordinal);
+        Assert.DoesNotContain("Fantasy Map Maker", frames[2], StringComparison.Ordinal);
+        Assert.Contains("All sources *", frames[3], StringComparison.Ordinal);
+
+        frames.Clear();
+        Picker.Run([ide, cli], "terminal-dark", ["right", "s", "esc"], _launch, frames.Add, width: 80);
+        Assert.Contains("This workspace *", frames[1], StringComparison.Ordinal);
+        Assert.Contains("All sources *", frames[1], StringComparison.Ordinal);
+        Assert.Contains("Cursor-CLI *", frames[2], StringComparison.Ordinal);
+        Assert.Contains("This workspace *", frames[2], StringComparison.Ordinal);
+        Assert.Contains("Fantasy Map Maker", frames[2], StringComparison.Ordinal);
+        Assert.DoesNotContain("River map", frames[2], StringComparison.Ordinal);
+
+        frames.Clear();
+        Picker.Run([cli], "terminal-dark", ["enter", "s", "esc"], _launch, frames.Add, width: 80);
+        Assert.Contains("file: Fantasy Map Maker.htmls", frames[^2], StringComparison.Ordinal);
+
+        var emptyDir = Path.Combine(_root, "empty-out");
+        var stdout = new StringWriter();
+        var code = Exporter.ExportWithPicker(
+            [cli],
+            "terminal-dark",
+            ["enter"],
+            _launch,
+            emptyDir,
+            false,
+            _chatsRoot,
+            stdout,
+            sources: new HashSet<string> { "ide" });
+        Assert.Equal(0, code);
+        Assert.Contains("(no chats)", stdout.ToString(), StringComparison.Ordinal);
+        Assert.False(Directory.Exists(emptyDir));
+    }
+
+    private static Chat Row(string title, string workspace, string id, DateTime moment, string source = "cli")
+    {
+        return new Chat(id, title, workspace, workspace, new DateTimeOffset(moment).ToUnixTimeMilliseconds(), true, ".", source);
     }
 
     private static IEnumerable<string> Boom()

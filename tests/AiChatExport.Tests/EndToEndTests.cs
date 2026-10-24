@@ -26,6 +26,8 @@ public class EndToEndTests
         Assert.Contains("dark-web", help, StringComparison.Ordinal);
         Assert.Contains("light-web", help, StringComparison.Ordinal);
         Assert.Contains("--markdown", help, StringComparison.Ordinal);
+        Assert.Contains("--projects-root", help, StringComparison.Ordinal);
+        Assert.Contains("--source", help, StringComparison.Ordinal);
         var readme = File.ReadAllText(Path.Combine(RepoRoot(), "README.md"));
         Assert.StartsWith("# ai-chat-export\n", readme);
         Assert.Contains("`--markdown` writes the Markdown file", readme, StringComparison.Ordinal);
@@ -38,6 +40,9 @@ public class EndToEndTests
         Assert.Contains("Enter asks for a file name", readme, StringComparison.Ordinal);
         Assert.Contains("Esc closes", readme, StringComparison.Ordinal);
         Assert.Contains("`i` shows the selected chat id", readme, StringComparison.Ordinal);
+        Assert.Contains("Cu-CLI", readme, StringComparison.Ordinal);
+        Assert.Contains("Cu-IDE", readme, StringComparison.Ordinal);
+        Assert.Contains("~/.cursor/projects", readme, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -54,7 +59,8 @@ public class EndToEndTests
             var exe = Path.Combine(RepoRoot(), "src", "AiChatExport", "bin", "Debug", "net10.0", "ai-chat-export.exe");
             Assert.True(File.Exists(exe), exe);
             var stdout = new StringWriter();
-            var code = Exporter.Run(["--id", "demo", "--chats-root", chats, "--out", outDir]);
+            var projects = Path.Combine(root, "no-projects");
+            var code = Exporter.Run(["--id", "demo", "--chats-root", chats, "--projects-root", projects, "--out", outDir]);
             Assert.Equal(0, code);
             var htmlPath = Path.Combine(outDir, "Fantasy Map Maker.html");
             var page = File.ReadAllText(htmlPath);
@@ -69,6 +75,8 @@ public class EndToEndTests
             process.StartInfo.ArgumentList.Add("demo");
             process.StartInfo.ArgumentList.Add("--chats-root");
             process.StartInfo.ArgumentList.Add(chats);
+            process.StartInfo.ArgumentList.Add("--projects-root");
+            process.StartInfo.ArgumentList.Add(projects);
             process.StartInfo.ArgumentList.Add("--out");
             process.StartInfo.ArgumentList.Add(Path.Combine(root, "exe-out"));
             process.StartInfo.RedirectStandardOutput = true;
