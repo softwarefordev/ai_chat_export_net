@@ -125,6 +125,65 @@ public class RenderTests
     }
 
     [Fact]
+    public void Images_embed_only_base64_of_the_four_media_types()
+    {
+        var cases = new (string? Media, string Data, string Expected)[]
+        {
+            ("image/png", "AAAA", "data:image/png;base64,AAAA"),
+            ("IMAGE/PNG", "AAAA", "data:IMAGE/PNG;base64,AAAA"),
+            ("", "AAAA", "data:image/png;base64,AAAA"),
+            ("image/jpeg", "AAAA", "data:image/jpeg;base64,AAAA"),
+            ("image/gif", "AAAA", "data:image/gif;base64,AAAA"),
+            ("image/webp", "AAAA", "data:image/webp;base64,AAAA"),
+        };
+        foreach (var (media, data, expected) in cases)
+        {
+            var page = ImagePage(media, data);
+            var markdown = ImageMarkdown(media, data);
+            Assert.Contains(expected, page, StringComparison.Ordinal);
+            Assert.Contains(expected, markdown, StringComparison.Ordinal);
+            Assert.DoesNotContain("<script", page, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("http://", page, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("https://", page, StringComparison.OrdinalIgnoreCase);
+        }
+
+        var quoted = ImagePage("image/png", "quo\"te");
+        var svg = ImagePage("image/svg+xml", "AAAA");
+        Assert.DoesNotContain("<img", quoted, StringComparison.Ordinal);
+        Assert.DoesNotContain("quo", ImageMarkdown("image/png", "quo\"te"), StringComparison.Ordinal);
+        Assert.DoesNotContain("<img", svg, StringComparison.Ordinal);
+        Assert.DoesNotContain("svg", ImageMarkdown("image/svg+xml", "AAAA"), StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("<script", quoted, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("<script", svg, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Markdown_metadata_stays_on_one_line_and_body_breaks_remain()
+    {
+        var transcript = new Transcript();
+        transcript.Blocks.Add(new Block("agent", text: "Line one\n\nLine two"));
+        var markdown = MarkdownRenderer.Render(transcript, "Hello\nWorld", "Work\nSpace", "Oct 1\n2026");
+        Assert.StartsWith("# Hello World\n", markdown, StringComparison.Ordinal);
+        Assert.Contains("Work Space · Oct 1 2026\n", markdown, StringComparison.Ordinal);
+        Assert.Contains("Line one\n\nLine two", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("# World", markdown, StringComparison.Ordinal);
+    }
+
+    private static string ImagePage(string? media, string data)
+    {
+        var transcript = new Transcript();
+        transcript.Blocks.Add(new Block("you", images: [(media ?? "", data)]));
+        return HtmlRenderer.Render(transcript, "T", "W", "t");
+    }
+
+    private static string ImageMarkdown(string? media, string data)
+    {
+        var transcript = new Transcript();
+        transcript.Blocks.Add(new Block("you", images: [(media ?? "", data)]));
+        return MarkdownRenderer.Render(transcript, "T", "W", "t");
+    }
+
+    [Fact]
     public void Turn_mark_groups_the_user_and_following_agent()
     {
         var transcript = new Transcript();

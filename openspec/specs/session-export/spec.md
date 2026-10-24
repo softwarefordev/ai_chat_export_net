@@ -56,19 +56,34 @@ The picker SHALL hide the selected chat id until the user presses `i`. Each pres
 - **THEN** the frame has no id line
 
 ### Requirement: Distinct turn panels
-The HTML page SHALL paint each User section and each Agent section with different panels. A User panel SHALL use a warm background and a gold edge. An Agent panel SHALL use a cooler, flatter background. A System or Context section SHALL NOT use the User panel or the Agent panel.
+The HTML page SHALL paint each User section and each Agent section with different panels. On a web theme a User panel SHALL use a warm background and a gold edge, and an Agent panel SHALL use a cooler, flatter background. On a terminal theme a User panel SHALL use a phosphor background and an amber edge, and an Agent panel SHALL use a flatter phosphor background. A System or Context section SHALL NOT use the User panel or the Agent panel.
 
 #### Scenario: User and Agent differ
 - **WHEN** the page contains a User section and an Agent section
 - **THEN** those sections use different panel backgrounds
 
 #### Scenario: Both themes keep the difference
-- **WHEN** the same transcript is exported in the dark theme and the light theme
-- **THEN** each file paints the User panel and the Agent panel differently
+- **WHEN** the same transcript is exported in `dark-web` and in `light-web`
+- **THEN** each file paints the User panel and the Agent panel differently, and the User panel keeps its gold edge
+
+#### Scenario: Terminal themes keep the difference
+- **WHEN** the same transcript is exported in `terminal-dark` and in `terminal-light`
+- **THEN** each file paints the User panel and the Agent panel differently, and the User panel keeps its amber edge
 
 #### Scenario: Other sections stay quiet
 - **WHEN** the page contains a System or Context section
 - **THEN** that section uses neither the User panel nor the Agent panel
+
+### Requirement: Terminal page shape
+A terminal theme SHALL use square section corners. A web theme SHALL keep rounded section corners.
+
+#### Scenario: Terminal corners
+- **WHEN** the page uses `terminal-dark` or `terminal-light`
+- **THEN** the sections have square corners
+
+#### Scenario: Web corners
+- **WHEN** the page uses `dark-web` or `light-web`
+- **THEN** the sections keep rounded corners
 
 ### Requirement: User-turn navigator
 The HTML page SHALL include a navigator that stays in view while the transcript scrolls. The navigator SHALL link to each User section with a fragment in the same file. It SHALL NOT link to Agent, System, or Context sections. A transcript with no User section SHALL show no navigator entries. The page SHALL contain no script and no external address.
@@ -84,6 +99,51 @@ The HTML page SHALL include a navigator that stays in view while the transcript 
 #### Scenario: Stays in the file
 - **WHEN** the page is written
 - **THEN** each navigator link is a fragment in that file, and the page contains no script and no external address
+
+### Requirement: Turn filter
+Each User navigator entry SHALL have a checkbox beside its fragment link. No checkbox SHALL start checked. With none checked, every transcript section SHALL stay visible. The page SHALL still contain no script.
+
+#### Scenario: Nothing starts checked
+- **WHEN** the page opens
+- **THEN** every checkbox is unchecked and every User section and Agent section is visible
+
+#### Scenario: Checkbox beside the link
+- **WHEN** a User entry is shown
+- **THEN** a checkbox sits beside that entry's fragment link and the link remains
+
+### Requirement: Filtered turns
+While one or more navigator checkboxes are checked, the transcript SHALL show those User sections and the Agent sections that follow each of them until the next User section. Other User, Agent, System, and Context sections SHALL be hidden. The chat title, the footer, and every navigator entry SHALL stay visible.
+
+#### Scenario: One selected turn
+- **WHEN** the reader checks the first of three User entries and an Agent section follows that User section
+- **THEN** that User section and that Agent section are visible and the other User sections are hidden
+
+#### Scenario: Two selected turns
+- **WHEN** the reader checks the first and third User entries
+- **THEN** both of those User sections and the Agent sections that follow each of them are visible and the second User section is hidden
+
+#### Scenario: System and context stay out
+- **WHEN** a checkbox is checked and the page has a System section or a Context section
+- **THEN** that section is hidden
+
+#### Scenario: Title and navigator stay
+- **WHEN** a checkbox is checked
+- **THEN** the chat title, the footer, and every navigator entry remain visible
+
+### Requirement: Clear filter
+The navigator SHALL offer Clear filter pinned above the turn list and again after the last turn. Both controls SHALL appear only while a checkbox is checked. Using either SHALL clear every checkbox and show every transcript section again.
+
+#### Scenario: Both ends
+- **WHEN** a checkbox is checked
+- **THEN** Clear filter is shown pinned above the turn list and again after the last turn
+
+#### Scenario: Hidden when nothing is checked
+- **WHEN** no checkbox is checked
+- **THEN** Clear filter is not shown
+
+#### Scenario: Either control restores the transcript
+- **WHEN** the reader uses either Clear filter
+- **THEN** every checkbox is unchecked and every transcript section is visible
 
 ### Requirement: Navigator entries
 Each navigator entry SHALL show that User section's turn time when it has one, and the query text up to its first line break. An entry SHALL clip that text with an ellipsis when it does not fit. A User section with no query text SHALL still have an entry. The User section opened from the navigator SHALL be marked.
@@ -126,16 +186,35 @@ Each navigator entry SHALL place the turn time on its own line above the prompt.
 - **WHEN** the navigator shows a turn time
 - **THEN** that time does not wrap onto a second line
 
+### Requirement: Navigator time grouping
+The space between a navigator turn time and the prompt under it SHALL be smaller than the space between navigator entries. An entry with no turn time SHALL use that same space between entries. The first entry SHALL have no added space above it.
+
+#### Scenario: Time sits with the prompt below
+- **WHEN** the navigator shows two entries that each have a turn time and a prompt
+- **THEN** the space between each time and its prompt is smaller than the space between the two entries
+
+#### Scenario: Untimed entry keeps the row gap
+- **WHEN** an entry has no turn time and another entry follows it
+- **THEN** the space between those entries matches the space between two timed entries
+
+#### Scenario: First entry stays at the top
+- **WHEN** the navigator shows more than one entry
+- **THEN** the first entry has no added space above it
+
 ### Requirement: Navigator type
-The navigator time SHALL be 10px. The navigator SHALL use a sans-serif face. The transcript SHALL keep its serif face.
+The navigator time SHALL be 10px. On a web theme the navigator SHALL use a sans-serif face and the transcript SHALL keep its serif face. On a terminal theme the navigator and the transcript SHALL use a monospace face.
 
 #### Scenario: Time is 10px
 - **WHEN** the navigator shows a turn time
 - **THEN** that time is 10px
 
 #### Scenario: Navigator face
-- **WHEN** the page is written
+- **WHEN** a web theme page is written
 - **THEN** the navigator uses a sans-serif face and the transcript keeps its serif face
+
+#### Scenario: Terminal face
+- **WHEN** a terminal theme page is written
+- **THEN** the navigator and the transcript use a monospace face
 
 ### Requirement: Project name
 The tool SHALL present itself as `ai-chat-export` in help text and in the README.
@@ -302,12 +381,16 @@ The picker SHALL NOT delete or modify chats in the local store.
 The picker SHALL show the HTML theme that Enter will write.
 
 #### Scenario: Default theme is visible
-- **WHEN** the picker opens without a light-theme request
-- **THEN** the picker shows the dark theme as the theme that will be written
+- **WHEN** the picker opens without a theme request
+- **THEN** the picker shows `terminal-dark` as the theme that will be written
 
 #### Scenario: Light theme is visible
-- **WHEN** the user requested the light theme and the picker is open
-- **THEN** the picker shows the light theme as the theme that will be written
+- **WHEN** the user requested `terminal-light` and the picker is open
+- **THEN** the picker shows `terminal-light` as the theme that will be written
+
+#### Scenario: Web theme is visible
+- **WHEN** the user requested `dark-web` or `light-web` and the picker is open
+- **THEN** the picker shows that requested name as the theme that will be written
 
 ### Requirement: Export by chat id
 The CLI SHALL export a chat by id without opening the picker.
@@ -384,6 +467,33 @@ The CLI SHALL build the file stem from the chat title. A character that is illeg
 #### Scenario: Long title
 - **WHEN** the cleaned title is longer than 80 characters
 - **THEN** the file stem uses the first 80 characters
+
+### Requirement: Reserved device file name
+The CLI SHALL NOT write an export whose stem is a Windows reserved device name. After illegal-character cleanup, and before the extension, the stem SHALL be compared without letter case to CON, PRN, AUX, NUL, COM1 through COM9, and LPT1 through LPT9. A reserved default stem SHALL be replaced with the chat id. A reserved typed stem SHALL be replaced with the default file name.
+
+#### Scenario: Title is a device name
+- **WHEN** the chat title is `CON` and the user does not pass `--name` or type a file name
+- **THEN** the file stem is the chat id
+
+#### Scenario: Device name ignoring case
+- **WHEN** the chat title is `com1` and the user does not pass `--name` or type a file name
+- **THEN** the file stem is the chat id
+
+#### Scenario: Typed reserved name
+- **WHEN** the user confirms a name line whose text is `PRN` and the chat title is `Notes`
+- **THEN** the written file uses the title file name and is not named `PRN`
+
+#### Scenario: Title and typed name are both reserved
+- **WHEN** the chat title is `CON` and the user confirms a name line whose text is `AUX`
+- **THEN** the file stem is the chat id
+
+#### Scenario: Ordinary title
+- **WHEN** the chat title is `Console notes` and the user does not pass `--name` or type a file name
+- **THEN** the file stem is `Console notes`
+
+#### Scenario: Named path is a device name
+- **WHEN** the user passes a chat id and `--name` whose file stem is `CON`
+- **THEN** the CLI reports the error, writes no file, and exits unsuccessfully
 
 ### Requirement: Named output path
 Passing `--name` with a chat id and without an output directory SHALL write only that path. Passing `--name` without a chat id SHALL write no file and SHALL NOT open the picker. Passing `--name` with an output directory SHALL write no file.
@@ -500,15 +610,27 @@ Verbose mode SHALL add system text, injected context, assistant reasoning, raw t
 - **THEN** the transcript includes the other injected context and does not add the command block or the summary to the User section
 
 ### Requirement: HTML theme chosen at export
-The HTML file SHALL use the dark theme unless the user requests light at export time. The requested theme SHALL be part of the written file.
+The HTML file SHALL use `terminal-dark` unless the user requests `terminal-light`, `dark-web`, or `light-web`. The requested theme SHALL be part of the written file. `dark-web` SHALL keep the former dark palette. `light-web` SHALL keep the former light palette. The names `dark` and `light` SHALL be rejected.
 
 #### Scenario: Dark by default
-- **WHEN** the user exports without requesting light
-- **THEN** the HTML file renders in the dark theme
+- **WHEN** the user exports without requesting a theme
+- **THEN** the HTML file renders in `terminal-dark`
 
 #### Scenario: Light when requested
-- **WHEN** the user requests the light theme
-- **THEN** the HTML file renders in the light theme
+- **WHEN** the user requests `terminal-light`
+- **THEN** the HTML file renders in `terminal-light`
+
+#### Scenario: Web dark when requested
+- **WHEN** the user requests `dark-web`
+- **THEN** the HTML file renders in the former dark palette
+
+#### Scenario: Web light when requested
+- **WHEN** the user requests `light-web`
+- **THEN** the HTML file renders in the former light palette
+
+#### Scenario: Former names are rejected
+- **WHEN** the user passes `dark` or `light` as the theme
+- **THEN** the CLI rejects the request and writes no file
 
 ### Requirement: Self-contained original page
 The HTML file SHALL render its transcript and styling with no external assets. The page SHALL use an original visual design and SHALL NOT embed Cursor's logo or proprietary stylesheet.
@@ -537,11 +659,31 @@ The HTML page SHALL render assistant text as paragraphs, lists, fenced code, and
 - **THEN** the HTML contains that code in an inline code element
 
 ### Requirement: Image attached to a turn
-The HTML page SHALL embed an image that is part of a visible turn inside that file.
+The HTML page SHALL embed a visible turn's image inside that file only for a base64 payload whose media type is image/png, image/jpeg, image/gif, or image/webp, compared without letter case. A missing media type SHALL be treated as image/png. The HTML data URI SHALL encode the media type and payload. Anything else SHALL be omitted from the HTML body and the Markdown body, and the page SHALL have no external address.
 
 #### Scenario: Embedded image
-- **WHEN** a visible turn includes an image
+- **WHEN** a visible turn includes an image whose media type is image/png and whose payload is base64
 - **THEN** the HTML embeds that image and the page has no external address
+
+#### Scenario: Missing media type
+- **WHEN** a visible turn includes a base64 image payload and no media type
+- **THEN** the HTML embeds that image as image/png
+
+#### Scenario: JPEG GIF and WebP
+- **WHEN** a visible turn is exported once each for image/jpeg, image/gif, and image/webp, each with a base64 payload
+- **THEN** each HTML file embeds that payload under the media type used for that export
+
+#### Scenario: Media type letter case
+- **WHEN** a visible turn's media type is `IMAGE/PNG` and its payload is base64
+- **THEN** the HTML embeds that image
+
+#### Scenario: Payload outside base64
+- **WHEN** a visible turn's image payload contains a double quote
+- **THEN** the HTML body and the Markdown body omit that image and the page contains no script
+
+#### Scenario: Media type outside the set
+- **WHEN** a visible turn's media type is `image/svg+xml` and its payload is base64
+- **THEN** the HTML body and the Markdown body omit that image and the page contains no script
 
 ### Requirement: Markdown has no theme
 The Markdown file SHALL contain the same prompts, assistant text, and shown tool captions that an HTML export of that transcript would show. It SHALL NOT encode a color theme.
@@ -549,6 +691,21 @@ The Markdown file SHALL contain the same prompts, assistant text, and shown tool
 #### Scenario: Matching turns
 - **WHEN** the user passes `--markdown`
 - **THEN** the Markdown file contains those visible turns and does not encode a color theme
+
+### Requirement: Markdown metadata stays one line
+The Markdown title line, workspace, and chat timestamp SHALL each stay on one line. A newline in any of those values SHALL be written as a space. Line breaks inside the transcript body SHALL remain.
+
+#### Scenario: Title contains a newline
+- **WHEN** the chat title contains a newline and the user passes `--markdown`
+- **THEN** the title text from both sides of that newline appears on the title line, separated by a space, and that newline does not start another line
+
+#### Scenario: Workspace contains a newline
+- **WHEN** the workspace name contains a newline and the user passes `--markdown`
+- **THEN** that newline is written as a space on the metadata line
+
+#### Scenario: Body line breaks remain
+- **WHEN** assistant text contains a blank line and the user passes `--markdown`
+- **THEN** the Markdown body keeps that blank line
 
 ### Requirement: Read-only chat store
 The CLI SHALL read the local chat store and SHALL NOT modify it.
@@ -570,6 +727,24 @@ The export SHALL include the turns the reader understands and SHALL name skipped
 #### Scenario: Unknown blob
 - **WHEN** the conversation contains data the reader cannot interpret
 - **THEN** the export includes the understood turns and a footer entry for the skipped data
+
+### Requirement: Unexpected content shape
+A readable message SHALL contribute only content parts whose JSON shape matches what that part claims to be. The export SHALL write the file.
+
+#### Scenario: Numeric part type
+- **WHEN** an assistant message has one content part whose type is a number and another whose type is text
+- **THEN** the export includes the text part, omits the numeric part, and writes the file
+
+#### Scenario: Numeric role
+- **WHEN** one message has a numeric role and a later message has a user query
+- **THEN** the export includes that query, omits the numeric-role message, and writes the file
+
+### Requirement: Unbounded conversation blob
+When a conversation blob declares a length that does not fit in the remaining bytes or in a 32-bit length, the export SHALL NOT end with an unhandled exception. If no turns are recovered, the CLI SHALL report that the chat has no transcript and SHALL write no file.
+
+#### Scenario: Length does not fit
+- **WHEN** the root blob declares a length that does not fit in a 32-bit length and no role message can be read
+- **THEN** the CLI reports that the chat has no transcript, writes no file, and does not end with an unhandled exception
 
 ### Requirement: Image not attached to a turn
 The export SHALL name a stored image that is not part of a visible turn in the footer, and SHALL omit that image from the body.
@@ -619,6 +794,17 @@ Each visible User section and each Agent section SHALL show a formatted timestam
 #### Scenario: Both formats
 - **WHEN** the same turn is exported once as HTML and once as Markdown
 - **THEN** both files show that turn's formatted time
+
+### Requirement: Impossible turn timestamp
+A turn timestamp that matches the stamp shape but is not a real civil date SHALL be shown as its normalized raw text. The export SHALL write the file.
+
+#### Scenario: Impossible day
+- **WHEN** a visible user turn records `Friday, Oct 32, 2026, 11:13 AM (UTC-7)`
+- **THEN** the User section shows that text and the export writes the file
+
+#### Scenario: Navigator keeps the raw stamp
+- **WHEN** that same turn is shown in the HTML navigator
+- **THEN** the navigator shows that text as stored
 
 ### Requirement: User heading
 HTML and Markdown SHALL label each user section User. An agent section SHALL stay labeled Agent.

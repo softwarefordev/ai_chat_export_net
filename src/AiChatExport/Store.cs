@@ -6,7 +6,7 @@ using Microsoft.Data.Sqlite;
 
 namespace AiChatExport;
 
-public sealed class Conversation
+internal sealed class Conversation
 {
     public List<JsonObject> Messages { get; } = [];
 
@@ -15,7 +15,7 @@ public sealed class Conversation
     public List<string> UnlinkedImages { get; } = [];
 }
 
-public static class Store
+internal static class Store
 {
     public static readonly byte[] PngMagic = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
 
@@ -62,23 +62,17 @@ public static class Store
             throw new InvalidDataException("root blob is missing");
         }
 
-        var known = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var blobId in blobs.Keys)
-        {
-            known[blobId] = blobId;
-        }
-
         var conversation = new Conversation();
         if (IsAlignedIdList(root, blobs))
         {
-            LoadRaw(conversation, root, blobs, known, rootId);
+            LoadRaw(conversation, root, blobs, rootId);
         }
         else
         {
             var layout = ProtobufLayout(root, blobs);
             if (layout is null)
             {
-                LoadRaw(conversation, root, blobs, known, rootId);
+                LoadRaw(conversation, root, blobs, rootId);
             }
             else
             {
@@ -95,12 +89,11 @@ public static class Store
         Conversation conversation,
         byte[] root,
         Dictionary<string, byte[]> blobs,
-        Dictionary<string, string> known,
         string rootId)
     {
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var children = new List<(string Id, byte[]? Data)>();
-        foreach (var childId in OrderedIds(root, known))
+        foreach (var childId in OrderedIds(root, blobs))
         {
             if (seen.Contains(childId) || childId == rootId)
             {
@@ -398,14 +391,20 @@ public static class Store
                 {
                     (var length, var after) = ReadVarint(data, index);
                     index = after;
-                    if (length < 0 || index + (int)length > data.Length)
+                    if (length > int.MaxValue)
                     {
                         return null;
                     }
 
-                    var slice = data[index..(index + (int)length)];
+                    var size = (int)length;
+                    if ((long)index + size > data.Length)
+                    {
+                        return null;
+                    }
+
+                    var slice = data[index..(index + size)];
                     fields.Add((fieldNumber, slice));
-                    index += (int)length;
+                    index += size;
                 }
                 else if (wire == 1)
                 {
@@ -464,27 +463,21 @@ public static class Store
         throw new InvalidDataException("bad varint");
     }
 
-    private static List<string> OrderedIds(byte[] blob, Dictionary<string, string> known)
+    private static List<string> OrderedIds(byte[] blob, Dictionary<string, byte[]> blobs)
     {
-        var byBytes = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var id in known.Keys)
-        {
-            byBytes[id] = id;
-        }
-
         var found = new List<string>();
         var index = 0;
         var limit = blob.Length - 31;
         while (index < limit)
         {
             var hex = Convert.ToHexString(blob, index, 32).ToLowerInvariant();
-            if (!byBytes.TryGetValue(hex, out var blobId))
+            if (!blobs.ContainsKey(hex))
             {
                 index++;
                 continue;
             }
 
-            found.Add(blobId);
+            found.Add(hex);
             index += 32;
         }
 

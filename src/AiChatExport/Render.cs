@@ -4,7 +4,89 @@ using System.Text.RegularExpressions;
 
 namespace AiChatExport;
 
-public static class MarkdownRenderer
+internal static class ImageEmbed
+{
+    private static readonly HashSet<string> Allowed = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "image/png",
+        "image/jpeg",
+        "image/gif",
+        "image/webp",
+    };
+
+    public static bool TryAccept(string? media, string payload, out string acceptedMedia)
+    {
+        acceptedMedia = string.IsNullOrEmpty(media) ? "image/png" : media;
+        if (!Allowed.Contains(acceptedMedia) || !IsBase64(payload))
+        {
+            acceptedMedia = "";
+            return false;
+        }
+
+        return true;
+    }
+
+    public static string Html(string? media, string payload)
+    {
+        if (!TryAccept(media, payload, out var accepted))
+        {
+            return "";
+        }
+
+        return $"<img alt=\"attachment\" src=\"data:{WebUtility.HtmlEncode(accepted)};base64,{WebUtility.HtmlEncode(payload)}\">";
+    }
+
+    public static string Markdown(string? media, string payload)
+    {
+        if (!TryAccept(media, payload, out var accepted))
+        {
+            return "";
+        }
+
+        return $"![attachment](data:{accepted};base64,{payload})";
+    }
+
+    private static bool IsBase64(string payload)
+    {
+        if (payload.Length == 0 || payload.Length % 4 != 0)
+        {
+            return false;
+        }
+
+        var padding = 0;
+        foreach (var character in payload)
+        {
+            if (character == '=')
+            {
+                padding++;
+                if (padding > 2)
+                {
+                    return false;
+                }
+
+                continue;
+            }
+
+            if (padding > 0)
+            {
+                return false;
+            }
+
+            var allowed = character is >= 'A' and <= 'Z'
+                or >= 'a' and <= 'z'
+                or >= '0' and <= '9'
+                or '+' or '/';
+            if (!allowed)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+}
+
+internal static class MarkdownRenderer
 {
     private static readonly Dictionary<string, string> Headings = new(StringComparer.Ordinal)
     {
@@ -18,7 +100,7 @@ public static class MarkdownRenderer
 
     public static string Render(Transcript transcript, string title, string workspace, string timestamp)
     {
-        var parts = new List<string> { $"# {title}", "", $"{workspace} · {timestamp}", "" };
+        var parts = new List<string> { $"# {SingleLine(title)}", "", $"{SingleLine(workspace)} · {SingleLine(timestamp)}", "" };
         foreach (var block in transcript.Blocks)
         {
             var heading = Headings.GetValueOrDefault(block.Kind, block.Kind);
@@ -59,7 +141,13 @@ public static class MarkdownRenderer
 
             foreach (var (media, data) in block.Images)
             {
-                parts.Add($"![attachment](data:{media};base64,{data})");
+                var image = ImageEmbed.Markdown(media, data);
+                if (image.Length == 0)
+                {
+                    continue;
+                }
+
+                parts.Add(image);
                 parts.Add("");
             }
         }
@@ -79,6 +167,11 @@ public static class MarkdownRenderer
         return string.Join("\n", parts).TrimEnd() + "\n";
     }
 
+    private static string SingleLine(string value)
+    {
+        return value.Replace("\r\n", " ", StringComparison.Ordinal).Replace('\n', ' ').Replace('\r', ' ');
+    }
+
     private static List<string> PieceMarkdown(Block block)
     {
         var parts = new List<string>();
@@ -96,7 +189,13 @@ public static class MarkdownRenderer
             }
             else if (piece.Kind == "image")
             {
-                parts.Add($"![attachment](data:{piece.Media};base64,{piece.Text})");
+                var image = ImageEmbed.Markdown(piece.Media, piece.Text);
+                if (image.Length == 0)
+                {
+                    continue;
+                }
+
+                parts.Add(image);
                 parts.Add("");
             }
             else if (piece.Kind == "reasoning")
@@ -119,7 +218,7 @@ public static class MarkdownRenderer
     }
 }
 
-public static class HtmlRenderer
+internal static class HtmlRenderer
 {
     private const string WebBody = "18px/1.5 Georgia, \"Iowan Old Style\", Palatino, serif";
     private const string WebNav = "\"Segoe UI\", system-ui, sans-serif";
@@ -197,6 +296,14 @@ public static class HtmlRenderer
         TerminalBody,
         TerminalNav,
         "0");
+
+    public static readonly string[] ThemeNames =
+    [
+        "terminal-dark",
+        "terminal-light",
+        "dark-web",
+        "light-web",
+    ];
 
     private static readonly Dictionary<string, Dictionary<string, string>> Themes = new(StringComparer.Ordinal)
     {
@@ -446,7 +553,7 @@ public static class HtmlRenderer
         string body;
         if (block.Pieces.Count > 0)
         {
-            body = string.Join("\n", block.Pieces.Select(PieceHtml));
+            body = string.Join("\n", block.Pieces.Select(PieceHtml).Where(part => part.Length > 0));
         }
         else
         {
@@ -497,7 +604,7 @@ public static class HtmlRenderer
 
     private static string ImageHtml(string media, string data)
     {
-        return $"<img alt=\"attachment\" src=\"data:{WebUtility.HtmlEncode(media)};base64,{data}\">";
+        return ImageEmbed.Html(media, data);
     }
 
     private static string Footer(IReadOnlyList<string> lines)

@@ -161,6 +161,38 @@ public class TranscriptTests
     }
 
     [Fact]
+    public void Impossible_day_stays_raw_and_odd_parts_are_skipped()
+    {
+        var stamp = "Friday, Oct 32, 2026, 11:13 AM (UTC-7)";
+        var messages = new JsonObject[]
+        {
+            new()
+            {
+                ["role"] = 4,
+                ["content"] = "SECRET_ROLE",
+            },
+            Support.Message("assistant", new JsonArray
+            {
+                new JsonObject
+                {
+                    ["type"] = 1,
+                    ["text"] = "HIDDEN_NUMERIC",
+                },
+                Support.TextPart("text", "Visible reply"),
+            }),
+            Support.Message("user", $"<timestamp>{stamp}</timestamp>\n<user_query>Hello there</user_query>"),
+        };
+        var transcript = Build(messages, ["Hello there"]);
+        Assert.Equal(stamp, transcript.Blocks.Single(block => block.Kind == "you").Timestamp);
+        var body = string.Join("\n", transcript.Blocks.Select(block => block.Text));
+        Assert.Contains("Visible reply", body, StringComparison.Ordinal);
+        Assert.Contains("Hello there", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("SECRET_ROLE", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("HIDDEN_NUMERIC", body, StringComparison.Ordinal);
+        Assert.Empty(transcript.Footer);
+    }
+
+    [Fact]
     public void Footer_names_skipped_blob_and_unlinked_image()
     {
         var (messages, prompts) = Support.SampleMessages();

@@ -1,38 +1,30 @@
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace AiChatExport;
 
-public sealed class TerminalWriter : StringWriter
-{
-    public bool IsTerminal => true;
-}
-
-public sealed class Activity : IDisposable
+internal sealed class Activity : IDisposable
 {
     private static readonly string[] Frames = ["...", "..", "."];
     private readonly TextWriter _stream;
+    private readonly bool _isTerminal;
     private readonly TimeSpan _interval;
     private readonly ManualResetEventSlim _stop = new(false);
     private Thread? _thread;
     private bool _shown;
+    private bool _disposed;
 
-    public Activity(TextWriter stream, TimeSpan? interval = null)
+    public Activity(TextWriter stream, bool isTerminal, TimeSpan? interval = null)
     {
         _stream = stream;
+        _isTerminal = isTerminal;
         _interval = interval ?? TimeSpan.FromMilliseconds(200);
-    }
-
-    public static bool IsTerminal(TextWriter stream)
-    {
-        return stream is TerminalWriter;
     }
 
     public void Start()
     {
-        if (!IsTerminal(_stream))
+        if (!_isTerminal || _thread is not null)
         {
             return;
         }
@@ -46,16 +38,22 @@ public sealed class Activity : IDisposable
 
     public void Dispose()
     {
-        if (!_shown)
+        if (_disposed)
         {
             return;
         }
 
-        _stop.Set();
-        _thread?.Join();
-        _stream.Write("\r" + new string(' ', Frames[0].Length) + "\r");
-        _stream.Flush();
-        _shown = false;
+        _disposed = true;
+        if (_shown)
+        {
+            _stop.Set();
+            _thread?.Join();
+            _stream.Write("\r" + new string(' ', Frames[0].Length) + "\r");
+            _stream.Flush();
+            _shown = false;
+        }
+
+        _stop.Dispose();
     }
 
     private void Spin()
@@ -71,7 +69,7 @@ public sealed class Activity : IDisposable
     }
 }
 
-public static class Exporter
+internal static class Exporter
 {
     public static string SafeStem(string? title, string chatId)
     {
@@ -81,7 +79,7 @@ public static class Exporter
             raw = chatId;
         }
 
-        return Picker.Stem(raw) is { Length: > 0 } stem ? stem : chatId;
+        return Picker.Stem(raw) is { Length: > 0 } stem && !Picker.IsReservedStem(stem) ? stem : chatId;
     }
 
     public static int ExportSession(
@@ -97,10 +95,12 @@ public static class Exporter
         string? outputPath = null,
         TextWriter? stdout = null,
         TextWriter? stderr = null,
-        TimeSpan? activityInterval = null)
+        TimeSpan? activityInterval = null,
+        bool? stderrIsTerminal = null)
     {
         var output = stdout ?? Console.Out;
         var error = stderr ?? Console.Error;
+        var showActivity = stderrIsTerminal ?? (ReferenceEquals(error, Console.Error) && !Console.IsErrorRedirected);
         if (outputPath is not null)
         {
             var namedError = NamedOutputError(outputPath);
@@ -113,7 +113,7 @@ public static class Exporter
 
         var warnings = new List<string>();
         List<Chat> chats;
-        using (var spin = new Activity(error, activityInterval))
+        using (var spin = new Activity(error, showActivity, activityInterval))
         {
             spin.Start();
             chats = Catalog.Load(chatsRoot, warnings);
@@ -127,7 +127,7 @@ public static class Exporter
         string? failure = null;
         string? htmlPath = null;
         string? markdownPath = null;
-        using (var spin = new Activity(error, activityInterval))
+        using (var spin = new Activity(error, showActivity, activityInterval))
         {
             spin.Start();
             var chat = chats.FirstOrDefault(item => item.Id == chatId);
@@ -240,7 +240,7 @@ public static class Exporter
                 {
                     stdout.Write(string.Join("", frames));
                 }
-                if (result.DeleteRequested || result.ChatId is null)
+                if (result.ChatId is null)
                 {
                     return 0;
                 }
@@ -332,7 +332,7 @@ public static class Exporter
             else if (arg == "--theme" || arg.StartsWith("--theme=", StringComparison.Ordinal))
             {
                 theme = Value() ?? "";
-                if (theme is not ("terminal-dark" or "terminal-light" or "dark-web" or "light-web"))
+                if (!HtmlRenderer.ThemeNames.Contains(theme))
                 {
                     Console.Error.WriteLine("invalid theme");
                     return 2;
@@ -430,7 +430,7 @@ public static class Exporter
                 },
                 () => LeavePickerUi(Console.Out),
                 EnterPickerUi);
-            if (code != 0 || picked is null || picked.DeleteRequested || picked.ChatId is null)
+            if (code != 0 || picked is null || picked.ChatId is null)
             {
                 return code;
             }
@@ -499,23 +499,14 @@ public static class Exporter
             return;
         }
 
-        var handle = GetStdHandle(-11);
-        if (handle == 0 || handle == -1 || !GetConsoleMode(handle, out var mode))
+        var handle = VirtualTerminal.GetStdHandle(-11);
+        if (handle == 0 || handle == -1 || !VirtualTerminal.GetConsoleMode(handle, out var mode))
         {
             return;
         }
 
-        SetConsoleMode(handle, mode | 0x0004);
+        VirtualTerminal.SetConsoleMode(handle, mode | 0x0004);
     }
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern nint GetStdHandle(int nStdHandle);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool GetConsoleMode(nint hConsoleHandle, out uint lpMode);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool SetConsoleMode(nint hConsoleHandle, uint dwMode);
 
     private static IEnumerable<string> ReadKeys()
     {
@@ -540,6 +531,12 @@ public static class Exporter
         if (Directory.Exists(path))
         {
             return $"Output path is a directory: {path}";
+        }
+
+        var stem = Path.GetFileNameWithoutExtension(name);
+        if (Picker.IsReservedStem(stem))
+        {
+            return $"Output path is a reserved device name: {path}";
         }
 
         return null;

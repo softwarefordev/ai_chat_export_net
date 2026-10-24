@@ -1,10 +1,10 @@
 namespace AiChatExport;
 
-public sealed record PickerResult(string? ChatId, bool DeleteRequested = false, string? FileName = null);
+internal sealed record PickerResult(string? ChatId, string? FileName = null);
 
-public sealed class PickerInterruptException : Exception;
+internal sealed class PickerInterruptException : Exception;
 
-public static class Picker
+internal static class Picker
 {
     public const int TimeWidth = 21;
     public const int WorkspaceCap = 24;
@@ -57,7 +57,7 @@ public static class Picker
                 if (key == "enter")
                 {
                     var name = ConfirmFileName(draft, defaultName, extension);
-                    return new PickerResult(naming.Id, false, name);
+                    return new PickerResult(naming.Id, name);
                 }
 
                 if (key == "esc")
@@ -107,14 +107,14 @@ public static class Picker
             else if (key == "esc")
             {
                 Paint();
-                return new PickerResult(null, false);
+                return new PickerResult(null);
             }
             else if (key == "enter")
             {
                 shown = Visible();
                 if (shown.Count == 0)
                 {
-                    return new PickerResult(null, false);
+                    return new PickerResult(null);
                 }
 
                 naming = shown[selected];
@@ -131,7 +131,7 @@ public static class Picker
             Paint();
         }
 
-        return new PickerResult(null, false);
+        return new PickerResult(null);
     }
 
     public static string RenderFrame(
@@ -203,7 +203,13 @@ public static class Picker
 
     public static string DefaultFileName(Chat chat, string extension)
     {
-        return $"{Stem(chat.DisplayTitle)}{extension}";
+        var stem = Stem(chat.DisplayTitle);
+        if (stem.Length == 0 || IsReservedStem(stem))
+        {
+            stem = chat.Id;
+        }
+
+        return $"{stem}{extension}";
     }
 
     public static string ConfirmFileName(string draft, string fallback, string extension)
@@ -226,7 +232,7 @@ public static class Picker
         }
 
         var stem = Stem(text);
-        if (stem.Length == 0)
+        if (stem.Length == 0 || IsReservedStem(stem))
         {
             return fallback;
         }
@@ -247,6 +253,31 @@ public static class Picker
         var stem = string.Join(" ", new string(cleaned.ToArray()).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
         stem = stem.TrimEnd(' ', '.');
         return stem.Length <= 80 ? stem : stem[..80];
+    }
+
+    private static readonly HashSet<string> ReservedDeviceNames = CreateReservedDeviceNames();
+
+    public static bool IsReservedStem(string stem)
+    {
+        return ReservedDeviceNames.Contains(stem);
+    }
+
+    private static HashSet<string> CreateReservedDeviceNames()
+    {
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "CON",
+            "PRN",
+            "AUX",
+            "NUL",
+        };
+        for (var number = 1; number <= 9; number++)
+        {
+            names.Add("COM" + number.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            names.Add("LPT" + number.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        return names;
     }
 
     public static int FrameWidth(int? width)

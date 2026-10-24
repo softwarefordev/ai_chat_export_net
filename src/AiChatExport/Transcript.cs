@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 
 namespace AiChatExport;
 
-public sealed class Piece
+internal sealed class Piece
 {
     public Piece(string kind, string text, string media = "")
     {
@@ -21,7 +21,7 @@ public sealed class Piece
     public string Media { get; }
 }
 
-public sealed class Block
+internal sealed class Block
 {
     public Block(
         string kind,
@@ -56,14 +56,14 @@ public sealed class Block
     public string Detail { get; }
 }
 
-public sealed class Transcript
+internal sealed class Transcript
 {
     public List<Block> Blocks { get; } = [];
 
     public List<string> Footer { get; } = [];
 }
 
-public static class TranscriptBuilder
+internal static class TranscriptBuilder
 {
     private static readonly Regex TurnTime = new(
         @"^(?<weekday>[A-Za-z]+), (?<month>[A-Za-z]{3}) (?<day>\d{1,2}), (?<year>\d{4}), (?<hour>\d{1,2}):(?<minute>\d{2}) (?<ampm>AM|PM) \(UTC[+-]\d+\)$",
@@ -117,7 +117,12 @@ public static class TranscriptBuilder
 
         foreach (var message in messages)
         {
-            var role = message["role"]?.GetValue<string>();
+            var role = JsonString(message["role"]);
+            if (role is null)
+            {
+                continue;
+            }
+
             var content = message["content"];
             if (role == "system")
             {
@@ -319,16 +324,33 @@ public static class TranscriptBuilder
         return "";
     }
 
+    private static readonly Dictionary<string, Regex> ElementBodies = ElementPatterns(capture: true);
+
+    private static readonly Dictionary<string, Regex> ElementStrips = ElementPatterns(capture: false);
+
+    private static Dictionary<string, Regex> ElementPatterns(bool capture)
+    {
+        var names = new[] { "user_query", "conversation_summary", "cursor_commands", "timestamp" };
+        var patterns = new Dictionary<string, Regex>(StringComparer.Ordinal);
+        foreach (var name in names)
+        {
+            var body = capture
+                ? $"<{Regex.Escape(name)}>(.*?)</{Regex.Escape(name)}>"
+                : $"<{Regex.Escape(name)}>.*?</{Regex.Escape(name)}>";
+            patterns[name] = new Regex(body, RegexOptions.CultureInvariant | RegexOptions.Singleline);
+        }
+
+        return patterns;
+    }
+
     public static List<string> ElementTexts(string text, string name)
     {
-        var pattern = new Regex($"<{Regex.Escape(name)}>(.*?)</{Regex.Escape(name)}>", RegexOptions.Singleline);
-        return pattern.Matches(text).Select(match => match.Groups[1].Value.Trim()).Where(value => value.Length > 0).ToList();
+        return ElementBodies[name].Matches(text).Select(match => match.Groups[1].Value.Trim()).Where(value => value.Length > 0).ToList();
     }
 
     public static string StripElement(string text, string name)
     {
-        var pattern = new Regex($"<{Regex.Escape(name)}>.*?</{Regex.Escape(name)}>", RegexOptions.Singleline);
-        return pattern.Replace(text, "").Trim();
+        return ElementStrips[name].Replace(text, "").Trim();
     }
 
     public static string FormatTurnTime(string raw)
@@ -362,48 +384,52 @@ public static class TranscriptBuilder
             hour = 0;
         }
 
-        var moment = new DateTime(
-            int.Parse(match.Groups["year"].Value, CultureInfo.InvariantCulture),
-            monthDate.Month,
-            int.Parse(match.Groups["day"].Value, CultureInfo.InvariantCulture),
-            hour,
-            int.Parse(match.Groups["minute"].Value, CultureInfo.InvariantCulture),
-            0);
-        return Catalog.FormatDateTime(moment);
+        try
+        {
+            var moment = new DateTime(
+                int.Parse(match.Groups["year"].Value, CultureInfo.InvariantCulture),
+                monthDate.Month,
+                int.Parse(match.Groups["day"].Value, CultureInfo.InvariantCulture),
+                hour,
+                int.Parse(match.Groups["minute"].Value, CultureInfo.InvariantCulture),
+                0);
+            return Catalog.FormatDateTime(moment);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return text;
+        }
     }
+
+    private static readonly Dictionary<string, Func<JsonObject, string>> CaptionFormatters = new(StringComparer.Ordinal)
+    {
+        ["Read"] = args => $"Read {ArgString(args, "path")}".TrimEnd(),
+        ["Glob"] = args => $"Glob {ArgString(args, "glob_pattern")}".TrimEnd(),
+        ["Shell"] = ShellCaption,
+    };
 
     public static string Caption(JsonObject part)
     {
-        var name = part["toolName"]?.GetValue<string>() ?? "tool";
+        var name = JsonString(part["toolName"]);
         if (string.IsNullOrEmpty(name))
         {
             name = "tool";
         }
 
         var args = Args(part["args"]);
-        if (name == "Read")
+        return CaptionFormatters.TryGetValue(name, out var format) ? format(args) : name;
+    }
+
+    private static string ShellCaption(JsonObject args)
+    {
+        if (args["description"] is JsonValue description
+            && description.TryGetValue<string>(out var text)
+            && text.Trim().Length > 0)
         {
-            return $"Read {ArgString(args, "path")}".TrimEnd();
+            return $"Ran {text.Trim()}";
         }
 
-        if (name == "Glob")
-        {
-            return $"Glob {ArgString(args, "glob_pattern")}".TrimEnd();
-        }
-
-        if (name == "Shell")
-        {
-            if (args["description"] is JsonValue description
-                && description.TryGetValue<string>(out var text)
-                && text.Trim().Length > 0)
-            {
-                return $"Ran {text.Trim()}";
-            }
-
-            return "Ran command";
-        }
-
-        return name;
+        return "Ran command";
     }
 
     private static List<string> PreambleParts(IReadOnlyList<string> typed)
@@ -498,8 +524,13 @@ public static class TranscriptBuilder
 
         return array
             .OfType<JsonObject>()
-            .Where(part => part["type"]?.GetValue<string>() == partType)
+            .Where(part => JsonString(part["type"]) == partType)
             .ToList();
+    }
+
+    private static string? JsonString(JsonNode? node)
+    {
+        return node is JsonValue value && value.TryGetValue<string>(out var text) ? text : null;
     }
 
     private static List<string> TextParts(JsonNode? content)
@@ -509,7 +540,7 @@ public static class TranscriptBuilder
             return [text];
         }
 
-        return Parts(content, "text").Select(part => part["text"]?.GetValue<string>() ?? "").ToList();
+        return Parts(content, "text").Select(part => JsonString(part["text"]) ?? "").ToList();
     }
 
     private static string Joined(JsonNode? content, string partType)
@@ -521,7 +552,7 @@ public static class TranscriptBuilder
 
         return string.Join(
             "\n\n",
-            Parts(content, partType).Select(part => part["text"]?.GetValue<string>() ?? "").Where(item => item.Length > 0));
+            Parts(content, partType).Select(part => JsonString(part["text"]) ?? "").Where(item => item.Length > 0));
     }
 
     private static string PlainText(JsonNode? content)
@@ -546,7 +577,7 @@ public static class TranscriptBuilder
                 continue;
             }
 
-            var media = "image/png";
+            string? media = null;
             if (part["mediaType"] is JsonValue mediaValue
                 && mediaValue.TryGetValue<string>(out var mediaText)
                 && !string.IsNullOrEmpty(mediaText))
@@ -554,7 +585,12 @@ public static class TranscriptBuilder
                 media = mediaText;
             }
 
-            images.Add((media, data));
+            if (!ImageEmbed.TryAccept(media, data, out var accepted))
+            {
+                continue;
+            }
+
+            images.Add((accepted, data));
         }
 
         return images;

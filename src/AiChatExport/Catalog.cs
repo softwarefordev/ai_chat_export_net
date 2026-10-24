@@ -4,7 +4,7 @@ using System.Text.Json;
 
 namespace AiChatExport;
 
-public sealed record Chat(
+internal sealed record Chat(
     string Id,
     string? Title,
     string Cwd,
@@ -18,7 +18,7 @@ public sealed record Chat(
     public string UpdatedLabel => Catalog.FormatTimestamp(UpdatedAtMs);
 }
 
-public static class Catalog
+internal static class Catalog
 {
     public static string FormatTimestamp(long updatedAtMs)
     {

@@ -162,8 +162,8 @@ public class ExportTests : IDisposable
     {
         Chat();
         var stdout = new StringWriter();
-        var terminal = new TerminalWriter();
-        Assert.Equal(0, Exporter.ExportSession(_chats, "chat-1", _out, stdout: stdout, stderr: terminal));
+        var terminal = new StringWriter();
+        Assert.Equal(0, Exporter.ExportSession(_chats, "chat-1", _out, stdout: stdout, stderr: terminal, stderrIsTerminal: true));
         Assert.Contains(Path.GetFullPath(Path.Combine(_out, "Fantasy Map Maker.html")), stdout.ToString(), StringComparison.Ordinal);
         Assert.DoesNotContain("...", stdout.ToString(), StringComparison.Ordinal);
         Assert.Contains("...", terminal.ToString(), StringComparison.Ordinal);
@@ -177,9 +177,10 @@ public class ExportTests : IDisposable
     [Fact]
     public void Open_stretch_advances_through_each_frame()
     {
-        var terminal = new TerminalWriter();
-        using (var activity = new Activity(terminal, TimeSpan.FromMilliseconds(30)))
+        var terminal = new StringWriter();
+        using (var activity = new Activity(terminal, isTerminal: true, TimeSpan.FromMilliseconds(30)))
         {
+            activity.Start();
             activity.Start();
             Thread.Sleep(160);
         }
@@ -196,8 +197,8 @@ public class ExportTests : IDisposable
     [Fact]
     public void Missing_chat_shows_dots_before_the_error_and_warnings_stay_whole()
     {
-        var terminal = new TerminalWriter();
-        Assert.Equal(1, Exporter.ExportSession(_chats, "missing", _out, stdout: new StringWriter(), stderr: terminal));
+        var terminal = new StringWriter();
+        Assert.Equal(1, Exporter.ExportSession(_chats, "missing", _out, stdout: new StringWriter(), stderr: terminal, stderrIsTerminal: true));
         var text = terminal.ToString();
         var error = "Chat not found: missing";
         Assert.True(text.IndexOf("...", StringComparison.Ordinal) < text.IndexOf(error, StringComparison.Ordinal));
@@ -205,8 +206,8 @@ public class ExportTests : IDisposable
 
         Support.WriteChat(_chats, "bad", _root, "Bad", schema: 2, messages: _messages, prompts: _prompts);
         Chat();
-        terminal = new TerminalWriter();
-        Assert.Equal(0, Exporter.ExportSession(_chats, "chat-1", _out, stdout: new StringWriter(), stderr: terminal));
+        terminal = new StringWriter();
+        Assert.Equal(0, Exporter.ExportSession(_chats, "chat-1", _out, stdout: new StringWriter(), stderr: terminal, stderrIsTerminal: true));
         text = terminal.ToString();
         var warning = "Unsupported schemaVersion 2 for bad";
         var warnAt = text.IndexOf(warning, StringComparison.Ordinal);
@@ -214,5 +215,118 @@ public class ExportTests : IDisposable
         Assert.Contains("\r   \r" + warning + "\n", text, StringComparison.Ordinal);
         Assert.True(text.IndexOf("...", StringComparison.Ordinal) < warnAt);
         Assert.Contains("...", text[(warnAt + warning.Length)..], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Reserved_device_stems_use_the_chat_id_and_named_con_writes_nothing()
+    {
+        var notes = new Chat("abc", "Notes", "c", "w", 0, true, "p");
+        Assert.Equal("Notes.html", Picker.ConfirmFileName("PRN", Picker.DefaultFileName(notes, ".html"), ".html"));
+        var con = new Chat("abc", "CON", "c", "w", 0, true, "p");
+        Assert.Equal("abc.html", Picker.DefaultFileName(con, ".html"));
+        Assert.Equal("abc.html", Picker.ConfirmFileName("AUX", Picker.DefaultFileName(con, ".html"), ".html"));
+        Assert.Equal("abc", Exporter.SafeStem("CON", "abc"));
+        Assert.Equal("abc", Exporter.SafeStem("com1", "abc"));
+        Assert.Equal("Console notes", Exporter.SafeStem("Console notes", "abc"));
+
+        Chat("abc", title: "CON");
+        var conDir = Path.Combine(_out, "con");
+        Assert.Equal(0, Exporter.ExportSession(_chats, "abc", conDir, stdout: new StringWriter()));
+        Assert.True(File.Exists(Path.Combine(conDir, "abc.html")));
+        Assert.False(File.Exists(Path.Combine(conDir, "CON.html")));
+
+        Chat("com", title: "com1");
+        var comDir = Path.Combine(_out, "com");
+        Assert.Equal(0, Exporter.ExportSession(_chats, "com", comDir, stdout: new StringWriter()));
+        Assert.True(File.Exists(Path.Combine(comDir, "com.html")));
+
+        Chat("plain", title: "Console notes");
+        var plainDir = Path.Combine(_out, "plain");
+        Assert.Equal(0, Exporter.ExportSession(_chats, "plain", plainDir, stdout: new StringWriter()));
+        Assert.True(File.Exists(Path.Combine(plainDir, "Console notes.html")));
+
+        Chat();
+        var reserved = Path.Combine(_root, "CON.html");
+        var stderr = new StringWriter();
+        Assert.Equal(1, Exporter.ExportSession(_chats, "chat-1", _out, outputPath: reserved, stderr: stderr));
+        Assert.False(File.Exists(reserved));
+        Assert.Contains("reserved device name", stderr.ToString(), StringComparison.Ordinal);
+        var ordinary = Path.Combine(_root, "ordinary.html");
+        Assert.Equal(0, Exporter.ExportSession(_chats, "chat-1", _out, outputPath: ordinary, stdout: new StringWriter()));
+        Assert.True(File.Exists(ordinary));
+    }
+
+    [Fact]
+    public void Impossible_turn_time_and_odd_json_still_write_the_file()
+    {
+        var stamp = "Friday, Oct 32, 2026, 11:13 AM (UTC-7)";
+        var query = "Hello there";
+        var messages = new List<System.Text.Json.Nodes.JsonObject>
+        {
+            new()
+            {
+                ["role"] = 4,
+                ["content"] = "SECRET_ROLE",
+            },
+            Support.Message("assistant", new System.Text.Json.Nodes.JsonArray
+            {
+                new System.Text.Json.Nodes.JsonObject
+                {
+                    ["type"] = 1,
+                    ["text"] = "HIDDEN_NUMERIC",
+                },
+                Support.TextPart("text", "Visible reply"),
+            }),
+            Support.Message("user", $"<timestamp>{stamp}</timestamp>\n<user_query>{query}</user_query>"),
+        };
+        Support.WriteChat(_chats, "odd", _root, "Odd Day", messages: messages, prompts: [query]);
+        var dir = Path.Combine(_out, "odd");
+        Assert.Equal(0, Exporter.ExportSession(_chats, "odd", dir, stdout: new StringWriter()));
+        var html = File.ReadAllText(Path.Combine(dir, "Odd Day.html"));
+        Assert.Contains(stamp, html, StringComparison.Ordinal);
+        Assert.Contains("Visible reply", html, StringComparison.Ordinal);
+        Assert.Contains(query, html, StringComparison.Ordinal);
+        Assert.DoesNotContain("SECRET_ROLE", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("HIDDEN_NUMERIC", html, StringComparison.Ordinal);
+        var nav = html.Split("<article>", 2)[0];
+        Assert.Contains(stamp, nav, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Unbounded_root_blob_reports_no_transcript()
+    {
+        var dir = Support.WriteChat(_chats, "huge", _root, "Huge", withStore: false);
+        Support.WriteRootBlob(Path.Combine(dir, "store.db"), [0x0A, 0x80, 0x80, 0x80, 0x80, 0x08]);
+        var stderr = new StringWriter();
+        Assert.Equal(1, Exporter.ExportSession(_chats, "huge", _out, stderr: stderr));
+        Assert.Contains("no transcript", stderr.ToString(), StringComparison.Ordinal);
+        Assert.Empty(Directory.GetFiles(_out));
+    }
+
+    [Fact]
+    public void Theme_names_match_help_and_each_theme_exports()
+    {
+        var listed = string.Join(",", HtmlRenderer.ThemeNames);
+        Assert.Contains("{" + listed + "}", Exporter.HelpText, StringComparison.Ordinal);
+        Chat();
+        foreach (var theme in HtmlRenderer.ThemeNames)
+        {
+            var dir = Path.Combine(_out, theme);
+            Assert.Equal(0, Exporter.Run(["--id", "chat-1", "--chats-root", _chats, "--out", dir, "--theme", theme]));
+            Assert.True(File.Exists(Path.Combine(dir, "Fantasy Map Maker.html")));
+        }
+
+        var error = Console.Error;
+        Console.SetError(new StringWriter());
+        try
+        {
+            Assert.Equal(2, Exporter.Run(["--theme", "nope", "--id", "chat-1", "--out", Path.Combine(_out, "nope"), "--chats-root", _chats]));
+        }
+        finally
+        {
+            Console.SetError(error);
+        }
+
+        Assert.False(Directory.Exists(Path.Combine(_out, "nope")));
     }
 }

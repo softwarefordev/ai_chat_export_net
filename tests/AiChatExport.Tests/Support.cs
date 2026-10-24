@@ -141,6 +141,16 @@ public static class Support
         return chatDir;
     }
 
+    public static void WriteRootBlob(string path, byte[] rootBlob)
+    {
+        var rootId = Digest(rootBlob);
+        var blobs = new Dictionary<string, byte[]>(StringComparer.Ordinal)
+        {
+            [rootId] = rootBlob,
+        };
+        WriteSqlite(path, blobs, rootId);
+    }
+
     public static void WriteDb(
         string path,
         IReadOnlyList<JsonObject> messages,

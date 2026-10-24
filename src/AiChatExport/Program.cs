@@ -1,4 +1,4 @@
-﻿namespace AiChatExport;
+namespace AiChatExport;
 
 public static class Program
 {
