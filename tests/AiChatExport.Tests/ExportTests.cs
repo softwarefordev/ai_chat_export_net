@@ -43,7 +43,25 @@ public class ExportTests : IDisposable
         Assert.DoesNotContain("OLD_HTML", html, StringComparison.Ordinal);
         Assert.Equal("OLD_MD", File.ReadAllText(markdownPath));
         Assert.Equal("keep-me", File.ReadAllText(neighbor));
-        Assert.Contains("#161616", html, StringComparison.Ordinal);
+        Assert.Contains("#071207", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Former_theme_names_are_rejected_and_write_nothing()
+    {
+        var error = Console.Error;
+        Console.SetError(new StringWriter());
+        try
+        {
+            Assert.Equal(2, Exporter.Run(["--theme", "dark", "--id", "chat-1", "--out", _out, "--chats-root", _chats]));
+            Assert.Equal(2, Exporter.Run(["--theme", "light", "--id", "chat-1", "--out", _out, "--chats-root", _chats]));
+        }
+        finally
+        {
+            Console.SetError(error);
+        }
+
+        Assert.Empty(Directory.GetFileSystemEntries(_out));
     }
 
     [Fact]

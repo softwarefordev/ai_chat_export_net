@@ -121,32 +121,89 @@ public static class MarkdownRenderer
 
 public static class HtmlRenderer
 {
-    private static readonly Dictionary<string, string> Dark = new(StringComparer.Ordinal)
-    {
-        ["bg"] = "#161616",
-        ["text"] = "#f2f2f2",
-        ["muted"] = "#a3a3a3",
-        ["time"] = "#e0b040",
-        ["panel"] = "#222222",
-        ["user"] = "#2c261c",
-        ["agent"] = "#1e2428",
-        ["mark"] = "#e0b040",
-        ["rule"] = "#3a3a3a",
-        ["code"] = "#101010",
-    };
+    private const string WebBody = "18px/1.5 Georgia, \"Iowan Old Style\", Palatino, serif";
+    private const string WebNav = "\"Segoe UI\", system-ui, sans-serif";
+    private const string TerminalBody = "18px/1.5 Consolas, ui-monospace, monospace";
+    private const string TerminalNav = "Consolas, ui-monospace, monospace";
 
-    private static readonly Dictionary<string, string> Light = new(StringComparer.Ordinal)
+    private static readonly Dictionary<string, string> DarkWeb = Theme(
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["bg"] = "#161616",
+            ["text"] = "#f2f2f2",
+            ["muted"] = "#a3a3a3",
+            ["time"] = "#e0b040",
+            ["panel"] = "#222222",
+            ["user"] = "#2c261c",
+            ["agent"] = "#1e2428",
+            ["mark"] = "#e0b040",
+            ["rule"] = "#3a3a3a",
+            ["code"] = "#101010",
+        },
+        WebBody,
+        WebNav,
+        "8px");
+
+    private static readonly Dictionary<string, string> LightWeb = Theme(
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["bg"] = "#f7f7f4",
+            ["text"] = "#1c1c1c",
+            ["muted"] = "#5e5e5e",
+            ["time"] = "#8a5a00",
+            ["panel"] = "#ffffff",
+            ["user"] = "#f6efe4",
+            ["agent"] = "#f3f5f7",
+            ["mark"] = "#8a5a00",
+            ["rule"] = "#d9d4cc",
+            ["code"] = "#f0ece4",
+        },
+        WebBody,
+        WebNav,
+        "8px");
+
+    private static readonly Dictionary<string, string> TerminalDark = Theme(
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["bg"] = "#071207",
+            ["text"] = "#c6f7c0",
+            ["muted"] = "#6ea86a",
+            ["time"] = "#e2c15a",
+            ["panel"] = "#0c1a10",
+            ["user"] = "#12301a",
+            ["agent"] = "#0b1610",
+            ["mark"] = "#e2c15a",
+            ["rule"] = "#1e3a24",
+            ["code"] = "#040a05",
+        },
+        TerminalBody,
+        TerminalNav,
+        "0");
+
+    private static readonly Dictionary<string, string> TerminalLight = Theme(
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["bg"] = "#e6f5df",
+            ["text"] = "#0e3a16",
+            ["muted"] = "#3f6b45",
+            ["time"] = "#7a5b12",
+            ["panel"] = "#f4fbf1",
+            ["user"] = "#d7f0c8",
+            ["agent"] = "#e7f3e2",
+            ["mark"] = "#7a5b12",
+            ["rule"] = "#b7d4b0",
+            ["code"] = "#f7fff4",
+        },
+        TerminalBody,
+        TerminalNav,
+        "0");
+
+    private static readonly Dictionary<string, Dictionary<string, string>> Themes = new(StringComparer.Ordinal)
     {
-        ["bg"] = "#f7f7f4",
-        ["text"] = "#1c1c1c",
-        ["muted"] = "#5e5e5e",
-        ["time"] = "#8a5a00",
-        ["panel"] = "#ffffff",
-        ["user"] = "#f6efe4",
-        ["agent"] = "#f3f5f7",
-        ["mark"] = "#8a5a00",
-        ["rule"] = "#d9d4cc",
-        ["code"] = "#f0ece4",
+        ["terminal-dark"] = TerminalDark,
+        ["terminal-light"] = TerminalLight,
+        ["dark-web"] = DarkWeb,
+        ["light-web"] = LightWeb,
     };
 
     private static readonly Dictionary<string, string> Headings = new(StringComparer.Ordinal)
@@ -164,10 +221,11 @@ public static class HtmlRenderer
         string title,
         string workspace,
         string timestamp,
-        string theme = "dark")
+        string theme = "terminal-dark")
     {
-        var palette = theme == "light" ? Light : Dark;
-        var css = Stylesheet(palette);
+        var palette = Themes.TryGetValue(theme, out var found) ? found : Themes["terminal-dark"];
+        var turns = transcript.Blocks.Count(block => block.Kind == "you");
+        var css = Stylesheet(palette, turns);
         var sections = Sections(transcript.Blocks);
         var navigator = Navigator(transcript.Blocks);
         var footer = Footer(transcript.Footer);
@@ -197,11 +255,18 @@ public static class HtmlRenderer
 
     public static string RenderAssistant(string text) => Blocks(text);
 
-    private static string Stylesheet(Dictionary<string, string> palette)
+    private static Dictionary<string, string> Theme(Dictionary<string, string> colors, string body, string nav, string radius)
     {
-        return string.Join(
-            "\n",
-            [
+        colors["body"] = body;
+        colors["nav"] = nav;
+        colors["radius"] = radius;
+        return colors;
+    }
+
+    private static string Stylesheet(Dictionary<string, string> palette, int turns)
+    {
+        var rules = new List<string>
+        {
                 ":root {",
                 $"  --bg: {palette["bg"]};",
                 $"  --text: {palette["text"]};",
@@ -218,7 +283,7 @@ public static class HtmlRenderer
                 "  margin: 0;",
                 "  background: var(--bg);",
                 "  color: var(--text);",
-                "  font: 18px/1.5 Georgia, \"Iowan Old Style\", Palatino, serif;",
+                $"  font: {palette["body"]};",
                 "}",
                 "article { max-width: 44rem; margin: 0 auto; padding: 2.5rem 1.5rem 4rem; }",
                 "header { border-bottom: 1px solid var(--rule); margin-bottom: 1.5rem; }",
@@ -226,16 +291,24 @@ public static class HtmlRenderer
                 "h2 { font-size: 0.85rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); margin: 0 0 0.6rem; }",
                 ".meta { display: flex; justify-content: space-between; gap: 1rem; color: var(--muted); }",
                 ".time { color: var(--time); }",
-                "section { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 1rem 1.1rem; margin: 0 0 1rem; }",
+                $"section {{ background: var(--panel); border: 1px solid var(--rule); border-radius: {palette["radius"]}; padding: 1rem 1.1rem; margin: 0 0 1rem; }}",
                 "section.you { background: var(--user); border-left: 3px solid var(--mark); scroll-margin-top: 5rem; }",
                 "section.you:target { outline: 2px solid var(--mark); }",
                 "section.agent { background: var(--agent); }",
                 "section.system, section.context { background: var(--panel); }",
-                "nav { position: sticky; top: 0; overflow: auto; max-height: 40vh; background: var(--bg); border-bottom: 1px solid var(--rule); padding: 0.8rem 1.2rem; font-family: \"Segoe UI\", system-ui, sans-serif; }",
+                "nav { position: sticky; top: 0; overflow: auto; max-height: 40vh; background: var(--bg); border-bottom: 1px solid var(--rule); padding: 0.8rem 1.2rem; font-family: "
+                + palette["nav"]
+                + "; }",
                 "nav ol { list-style: none; margin: 0; padding: 0; }",
-                "nav a { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; color: var(--text); text-decoration: none; }",
+                "nav a { display: flex; flex-direction: column; gap: 0; min-width: 0; color: var(--text); text-decoration: none; }",
+                "nav li { display: flex; align-items: flex-start; gap: 0.5rem; }",
+                "nav li + li { margin-top: 0.85rem; }",
                 "nav .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }",
-                "nav .time { font-size: 10px; white-space: nowrap; }",
+                "nav .time { font-size: 10px; line-height: 1; white-space: nowrap; }",
+                "nav button { display: none; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--rule); }",
+                "body:has(nav input:checked) nav button { display: block; }",
+                "nav form > button:first-child { position: sticky; top: 0; z-index: 1; }",
+                "body:has(nav input:checked) article section { display: none; }",
                 "@media (min-width: 70rem) {",
                 "  body { display: grid; grid-template-columns: 30rem minmax(0, 1fr); align-items: start; }",
                 "  nav { max-height: 100vh; border-bottom: 0; border-right: 1px solid var(--rule); }",
@@ -245,23 +318,37 @@ public static class HtmlRenderer
                 "code { font-family: Consolas, ui-monospace, monospace; }",
                 "footer { color: var(--muted); font-size: 0.9rem; }",
                 "img { max-width: 100%; }",
-            ]);
+        };
+        for (var number = 1; number <= turns; number++)
+        {
+            rules.Add($"body:has(#keep-{number}:checked) article [data-turn=\"{number}\"] {{ display: block; }}");
+        }
+
+        return string.Join("\n", rules);
     }
 
     private static string Sections(IReadOnlyList<Block> blocks)
     {
         var rendered = new List<string>();
         var number = 0;
+        var turn = 0;
         foreach (var block in blocks)
         {
             var anchor = "";
+            var mark = 0;
             if (block.Kind == "you")
             {
                 number++;
+                turn = number;
                 anchor = $"user-{number}";
+                mark = turn;
+            }
+            else if (block.Kind == "agent" && turn > 0)
+            {
+                mark = turn;
             }
 
-            rendered.Add(Section(block, anchor));
+            rendered.Add(Section(block, anchor, mark));
         }
 
         return string.Join("\n", rendered);
@@ -286,11 +373,16 @@ public static class HtmlRenderer
             }
 
             var label = WebUtility.HtmlEncode(NavLabel(block));
-            items.Add($"<li><a href=\"#user-{number}\">{stamp}<span class=\"label\">{label}</span></a></li>");
+            items.Add(
+                "<li>"
+                + $"<input type=\"checkbox\" id=\"keep-{number.ToString(CultureInfo.InvariantCulture)}\">"
+                + $"<a href=\"#user-{number.ToString(CultureInfo.InvariantCulture)}\">{stamp}<span class=\"label\">{label}</span></a>"
+                + "</li>");
         }
 
         var body = string.Join("\n", items);
-        return $"<nav>\n<ol>\n{body}\n</ol>\n</nav>\n";
+        const string clear = "<button type=\"reset\">Clear filter</button>";
+        return $"<nav>\n<form>\n{clear}\n<ol>\n{body}\n</ol>\n{clear}\n</form>\n</nav>\n";
     }
 
     private static string CompactNavTime(string stamp)
@@ -348,7 +440,7 @@ public static class HtmlRenderer
         return "User";
     }
 
-    private static string Section(Block block, string anchor)
+    private static string Section(Block block, string anchor, int turn = 0)
     {
         var heading = Headings.GetValueOrDefault(block.Kind, block.Kind);
         string body;
@@ -368,7 +460,8 @@ public static class HtmlRenderer
         }
 
         var ident = anchor.Length > 0 ? $" id=\"{WebUtility.HtmlEncode(anchor)}\"" : "";
-        return $"<section class=\"{WebUtility.HtmlEncode(block.Kind)}\"{ident}>\n<h2>{Heading(block, heading)}</h2>\n{body}\n</section>";
+        var marked = turn > 0 ? $" data-turn=\"{turn.ToString(CultureInfo.InvariantCulture)}\"" : "";
+        return $"<section class=\"{WebUtility.HtmlEncode(block.Kind)}\"{ident}{marked}>\n<h2>{Heading(block, heading)}</h2>\n{body}\n</section>";
     }
 
     private static string Heading(Block block, string label)

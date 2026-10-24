@@ -88,7 +88,7 @@ public static class Exporter
         string chatsRoot,
         string chatId,
         string outDir,
-        string theme = "dark",
+        string theme = "terminal-dark",
         bool verbose = false,
         bool showTools = false,
         bool showDetail = false,
@@ -270,7 +270,7 @@ public static class Exporter
     {
         argv ??= Environment.GetCommandLineArgs().Skip(1).ToArray();
         string? chatId = null;
-        var theme = "dark";
+        var theme = "terminal-dark";
         var tools = false;
         var verbose = false;
         var detail = false;
@@ -332,7 +332,7 @@ public static class Exporter
             else if (arg == "--theme" || arg.StartsWith("--theme=", StringComparison.Ordinal))
             {
                 theme = Value() ?? "";
-                if (theme is not ("dark" or "light"))
+                if (theme is not ("terminal-dark" or "terminal-light" or "dark-web" or "light-web"))
                 {
                     Console.Error.WriteLine("invalid theme");
                     return 2;
@@ -454,14 +454,14 @@ public static class Exporter
 
     public const string HelpText =
         """
-        usage: ai-chat-export [--id ID] [--theme {dark,light}] [--tools] [--verbose] [--detail] [--markdown] [--out DIR] [--name PATH] [--chats-root DIR]
+        usage: ai-chat-export [--id ID] [--theme {terminal-dark,terminal-light,dark-web,light-web}] [--tools] [--verbose] [--detail] [--markdown] [--out DIR] [--name PATH] [--chats-root DIR]
 
         Export a Cursor agent session to HTML. Pass --markdown to write Markdown instead. In the picker, Enter asks for a file name. The title file name is the default.
 
         options:
           --id ID             Chat id to export. Omit to open the picker.
-          --theme {dark,light}
-                              HTML theme written into the file (default: dark).
+          --theme {terminal-dark,terminal-light,dark-web,light-web}
+                              HTML theme written into the file (default: terminal-dark).
           --tools             Include one caption per tool call. Omit raw tool output.
           --verbose           Include system text, injected context, reasoning, tool captions, and raw tool output.
           --detail            Include the conversation summary and Cursor command blocks after the user query.

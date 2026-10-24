@@ -28,20 +28,47 @@ public class RenderTests
     }
 
     [Fact]
-    public void Dark_is_default_and_light_is_separate_with_no_script_or_external_address()
+    public void Terminal_dark_is_default_and_the_other_themes_stay_distinct()
     {
-        var dark = Page(_transcript);
-        var light = Page(_transcript, "light");
-        Assert.Contains("#161616", dark, StringComparison.Ordinal);
-        Assert.DoesNotContain("#f7f7f4", dark, StringComparison.Ordinal);
-        Assert.Contains("#f7f7f4", light, StringComparison.Ordinal);
-        Assert.DoesNotContain("#161616", light, StringComparison.Ordinal);
-        foreach (var page in new[] { dark, light })
+        var page = Page(_transcript);
+        var darkWeb = Page(_transcript, "dark-web");
+        var lightWeb = Page(_transcript, "light-web");
+        var terminalLight = Page(_transcript, "terminal-light");
+        var unknown = Page(_transcript, "nope");
+        Assert.Contains("#071207", page, StringComparison.Ordinal);
+        Assert.Contains("font: 18px/1.5 Consolas, ui-monospace, monospace;", page, StringComparison.Ordinal);
+        Assert.Contains("font-family: Consolas, ui-monospace, monospace;", page, StringComparison.Ordinal);
+        Assert.Contains("border-radius: 0;", page, StringComparison.Ordinal);
+        Assert.Contains("--user: #12301a;", page, StringComparison.Ordinal);
+        Assert.Contains("--agent: #0b1610;", page, StringComparison.Ordinal);
+        Assert.Contains("--mark: #e2c15a;", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("#161616", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("#f7f7f4", page, StringComparison.Ordinal);
+        Assert.Equal(page, unknown);
+        Assert.Contains("#161616", darkWeb, StringComparison.Ordinal);
+        Assert.Contains("font: 18px/1.5 Georgia, \"Iowan Old Style\", Palatino, serif;", darkWeb, StringComparison.Ordinal);
+        Assert.Contains("font-family: \"Segoe UI\", system-ui, sans-serif;", darkWeb, StringComparison.Ordinal);
+        Assert.Contains("border-radius: 8px;", darkWeb, StringComparison.Ordinal);
+        Assert.Contains("--mark: #e0b040;", darkWeb, StringComparison.Ordinal);
+        Assert.Contains("--user: #2c261c;", darkWeb, StringComparison.Ordinal);
+        Assert.Contains("--agent: #1e2428;", darkWeb, StringComparison.Ordinal);
+        Assert.Contains("#f7f7f4", lightWeb, StringComparison.Ordinal);
+        Assert.Contains("--user: #f6efe4;", lightWeb, StringComparison.Ordinal);
+        Assert.Contains("--agent: #f3f5f7;", lightWeb, StringComparison.Ordinal);
+        Assert.DoesNotContain("#161616", lightWeb, StringComparison.Ordinal);
+        Assert.Contains("#e6f5df", terminalLight, StringComparison.Ordinal);
+        Assert.Contains("--user: #d7f0c8;", terminalLight, StringComparison.Ordinal);
+        Assert.Contains("--agent: #e7f3e2;", terminalLight, StringComparison.Ordinal);
+        Assert.Contains("--mark: #7a5b12;", terminalLight, StringComparison.Ordinal);
+        Assert.Contains("border-radius: 0;", terminalLight, StringComparison.Ordinal);
+        foreach (var rendered in new[] { page, darkWeb, lightWeb, terminalLight })
         {
-            Assert.DoesNotContain("<script", page, StringComparison.OrdinalIgnoreCase);
-            Assert.DoesNotContain("http", page, StringComparison.OrdinalIgnoreCase);
-            Assert.Contains("Please add a river tool.", page, StringComparison.Ordinal);
-            Assert.Contains("The river tool lives in tools/river.py.", page, StringComparison.Ordinal);
+            Assert.DoesNotContain("<script", rendered, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("http", rendered, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("Please add a river tool.", rendered, StringComparison.Ordinal);
+            Assert.Contains("The river tool lives in tools/river.py.", rendered, StringComparison.Ordinal);
+            Assert.Contains("section.you { background: var(--user); border-left: 3px solid var(--mark); scroll-margin-top: 5rem; }", rendered, StringComparison.Ordinal);
+            Assert.Contains("section.agent { background: var(--agent); }", rendered, StringComparison.Ordinal);
         }
     }
 
@@ -52,23 +79,14 @@ public class RenderTests
         transcript.Blocks.Add(new Block("you", text: "Prompt"));
         transcript.Blocks.Add(new Block("agent", text: "Reply"));
         transcript.Blocks.Add(new Block("system", text: "Note"));
-        var dark = Page(transcript);
-        var light = Page(transcript, "light");
-        Assert.Contains("--user: #2c261c;", dark, StringComparison.Ordinal);
-        Assert.Contains("--agent: #1e2428;", dark, StringComparison.Ordinal);
-        Assert.Contains("--user: #f6efe4;", light, StringComparison.Ordinal);
-        Assert.Contains("--agent: #f3f5f7;", light, StringComparison.Ordinal);
-        Assert.Contains("section.you { background: var(--user); border-left: 3px solid var(--mark); scroll-margin-top: 5rem; }", dark, StringComparison.Ordinal);
-        Assert.Contains("section.agent { background: var(--agent); }", dark, StringComparison.Ordinal);
-        Assert.Contains("section.system, section.context { background: var(--panel); }", dark, StringComparison.Ordinal);
-        Assert.Contains("<section class=\"you\"", dark, StringComparison.Ordinal);
-        Assert.Contains("<section class=\"agent\">", dark, StringComparison.Ordinal);
-        Assert.Contains("<section class=\"system\">", dark, StringComparison.Ordinal);
-        Assert.Contains("@media (min-width: 70rem) {", dark, StringComparison.Ordinal);
-        Assert.Contains("grid-template-columns: 30rem minmax(0, 1fr);", dark, StringComparison.Ordinal);
-        Assert.Contains("nav .time { font-size: 10px; white-space: nowrap; }", dark, StringComparison.Ordinal);
-        Assert.Contains("font-family: \"Segoe UI\", system-ui, sans-serif;", dark, StringComparison.Ordinal);
-        Assert.Contains("font: 18px/1.5 Georgia, \"Iowan Old Style\", Palatino, serif;", dark, StringComparison.Ordinal);
+        var page = Page(transcript, "dark-web");
+        Assert.Contains("section.system, section.context { background: var(--panel); }", page, StringComparison.Ordinal);
+        Assert.Contains("<section class=\"you\"", page, StringComparison.Ordinal);
+        Assert.Contains("<section class=\"agent\" data-turn=\"1\">", page, StringComparison.Ordinal);
+        Assert.Contains("<section class=\"system\">", page, StringComparison.Ordinal);
+        Assert.Contains("@media (min-width: 70rem) {", page, StringComparison.Ordinal);
+        Assert.Contains("grid-template-columns: 30rem minmax(0, 1fr);", page, StringComparison.Ordinal);
+        Assert.Contains("nav .time { font-size: 10px; line-height: 1; white-space: nowrap; }", page, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -107,6 +125,95 @@ public class RenderTests
     }
 
     [Fact]
+    public void Turn_mark_groups_the_user_and_following_agent()
+    {
+        var transcript = new Transcript();
+        transcript.Blocks.Add(new Block("system", text: "Preamble"));
+        transcript.Blocks.Add(new Block("you", text: "First"));
+        transcript.Blocks.Add(new Block("agent", text: "Reply one"));
+        transcript.Blocks.Add(new Block("context", text: "Injected"));
+        transcript.Blocks.Add(new Block("agent", text: "Reply two"));
+        transcript.Blocks.Add(new Block("you", text: "Second"));
+        transcript.Blocks.Add(new Block("you", text: "Third"));
+        transcript.Blocks.Add(new Block("agent", text: "Reply three"));
+        var article = Page(transcript).Split("<article>", 2)[1];
+        Assert.Contains("<section class=\"you\" id=\"user-1\" data-turn=\"1\">", article, StringComparison.Ordinal);
+        Assert.Equal(3, Count(article, "data-turn=\"1\""));
+        Assert.Contains("<section class=\"you\" id=\"user-2\" data-turn=\"2\">", article, StringComparison.Ordinal);
+        Assert.Equal(1, Count(article, "data-turn=\"2\""));
+        Assert.Contains("<section class=\"you\" id=\"user-3\" data-turn=\"3\">", article, StringComparison.Ordinal);
+        Assert.Contains("<section class=\"agent\" data-turn=\"3\">", article, StringComparison.Ordinal);
+        Assert.Equal(2, Count(article, "data-turn=\"3\""));
+        Assert.Contains("<section class=\"system\">", article, StringComparison.Ordinal);
+        Assert.Contains("<section class=\"context\">", article, StringComparison.Ordinal);
+        Assert.DoesNotContain("class=\"system\" data-turn", article, StringComparison.Ordinal);
+        Assert.DoesNotContain("class=\"context\" data-turn", article, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Checkbox_filter_keeps_the_link_and_restores_from_either_end()
+    {
+        var transcript = new Transcript();
+        transcript.Blocks.Add(new Block("you", text: "First line\nLater line"));
+        transcript.Blocks.Add(new Block("agent", text: "Reply"));
+        transcript.Blocks.Add(new Block("you", text: "Second"));
+        transcript.Blocks.Add(new Block("you", text: "Third"));
+        transcript.Footer.Add("Kept note");
+        var page = Page(transcript, "dark-web");
+        var nav = page.Split("<nav>", 2)[1].Split("</nav>", 2)[0];
+        var item = nav.Split("<li>", 2)[1].Split("</li>", 2)[0];
+        Assert.True(item.IndexOf("type=\"checkbox\"", StringComparison.Ordinal) < item.IndexOf("<a ", StringComparison.Ordinal));
+        Assert.Contains("id=\"keep-1\"", item, StringComparison.Ordinal);
+        Assert.Contains("href=\"#user-1\"", item, StringComparison.Ordinal);
+        Assert.DoesNotContain("<input", item.Split("<a ", 2)[1], StringComparison.Ordinal);
+        Assert.DoesNotMatch("<input[^>]*\\bchecked\\b", page);
+        Assert.Contains("<a href=\"#user-1\">", nav, StringComparison.Ordinal);
+        const string button = "<button type=\"reset\">Clear filter</button>";
+        Assert.Equal(2, Count(nav, button));
+        Assert.True(nav.IndexOf(button, StringComparison.Ordinal) < nav.IndexOf("<ol>", StringComparison.Ordinal));
+        Assert.True(nav.LastIndexOf(button, StringComparison.Ordinal) > nav.IndexOf("</ol>", StringComparison.Ordinal));
+        Assert.Contains("nav button { display: none; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--rule); }", page, StringComparison.Ordinal);
+        Assert.Contains("body:has(nav input:checked) nav button { display: block; }", page, StringComparison.Ordinal);
+        Assert.Contains("nav form > button:first-child { position: sticky; top: 0; z-index: 1; }", page, StringComparison.Ordinal);
+        const string hide = "body:has(nav input:checked) article section { display: none; }";
+        Assert.Contains(hide, page, StringComparison.Ordinal);
+        Assert.DoesNotContain("header", hide, StringComparison.Ordinal);
+        Assert.DoesNotContain("footer", hide, StringComparison.Ordinal);
+        for (var number = 1; number <= 3; number++)
+        {
+            Assert.Contains($"body:has(#keep-{number}:checked) article [data-turn=\"{number}\"] {{ display: block; }}", page, StringComparison.Ordinal);
+        }
+
+        Assert.Contains("<header>", page, StringComparison.Ordinal);
+        Assert.Contains("<h1>Fantasy Map Maker</h1>", page, StringComparison.Ordinal);
+        Assert.Contains("<footer>", page, StringComparison.Ordinal);
+        Assert.Contains("Kept note", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("<script", page, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("http", page, StringComparison.OrdinalIgnoreCase);
+
+        var markdown = MarkdownRenderer.Render(transcript, _title, _workspace, _timestamp);
+        Assert.DoesNotContain("checkbox", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("Clear filter", markdown, StringComparison.Ordinal);
+        Assert.Contains("## User", markdown, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Navigator_time_sits_closer_to_its_prompt_than_to_the_next_entry()
+    {
+        var transcript = new Transcript();
+        transcript.Blocks.Add(new Block("you", text: "First", timestamp: "Oct 23, 2026 11:13 AM"));
+        transcript.Blocks.Add(new Block("you", text: "Second"));
+        var page = Page(transcript);
+        Assert.Contains("nav a { display: flex; flex-direction: column; gap: 0; min-width: 0; color: var(--text); text-decoration: none; }", page, StringComparison.Ordinal);
+        Assert.Contains("nav li + li { margin-top: 0.85rem; }", page, StringComparison.Ordinal);
+        Assert.Contains("nav .time { font-size: 10px; line-height: 1; white-space: nowrap; }", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("0.75rem", page, StringComparison.Ordinal);
+        var markdown = MarkdownRenderer.Render(transcript, _title, _workspace, _timestamp);
+        Assert.DoesNotContain("0.85rem", markdown, StringComparison.Ordinal);
+        Assert.Contains("## User · Oct 23, 2026 11:13 AM", markdown, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Markdown_matches_visible_turns_without_theme_colors()
     {
         var (messages, prompts) = Support.SampleMessages();
@@ -125,7 +232,7 @@ public class RenderTests
         Assert.Equal(1, Count(markdown, "## Agent"));
     }
 
-    private string Page(Transcript transcript, string theme = "dark")
+    private string Page(Transcript transcript, string theme = "terminal-dark")
         => HtmlRenderer.Render(transcript, _title, _workspace, _timestamp, theme);
 
     private static int Count(string text, string value)

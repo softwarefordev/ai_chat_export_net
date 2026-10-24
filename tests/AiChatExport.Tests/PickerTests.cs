@@ -24,7 +24,7 @@ public class PickerTests : IDisposable
 
     public void Dispose() => Directory.Delete(_root, recursive: true);
 
-    private (PickerResult Result, List<string> Frames) Frames(IEnumerable<string> keys, string theme = "dark", int width = 80, string extension = ".html")
+    private (PickerResult Result, List<string> Frames) Frames(IEnumerable<string> keys, string theme = "terminal-dark", int width = 80, string extension = ".html")
     {
         var frames = new List<string>();
         var result = Picker.Run(_chats, theme, keys, _launch, frames.Add, width: width, extension: extension);
@@ -90,7 +90,12 @@ public class PickerTests : IDisposable
         Assert.Null(result.ChatId);
         var name = "file: Fantasy Map Maker.html";
         Assert.Contains("> Fantasy Map Maker", frames[^1], StringComparison.Ordinal);
-        Assert.Contains("theme: dark", frames[^1], StringComparison.Ordinal);
+        Assert.Contains("theme: terminal-dark", frames[^1], StringComparison.Ordinal);
+        foreach (var themeName in new[] { "terminal-light", "dark-web", "light-web" })
+        {
+            var (_, themed) = Frames(["enter"], theme: themeName);
+            Assert.Contains($"theme: {themeName}", themed[^1], StringComparison.Ordinal);
+        }
         Assert.Contains(name, frames[^1], StringComparison.Ordinal);
         Assert.Contains($";{name.Length + 1}H", frames[^1], StringComparison.Ordinal);
         Assert.Contains("\x1b[1 q", frames[^1], StringComparison.Ordinal);

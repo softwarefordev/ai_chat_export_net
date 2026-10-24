@@ -21,10 +21,18 @@ public class EndToEndTests
         Assert.Equal(0, code);
         var help = stdout.ToString();
         Assert.Contains("usage: ai-chat-export", help, StringComparison.Ordinal);
+        Assert.Contains("terminal-dark", help, StringComparison.Ordinal);
+        Assert.Contains("terminal-light", help, StringComparison.Ordinal);
+        Assert.Contains("dark-web", help, StringComparison.Ordinal);
+        Assert.Contains("light-web", help, StringComparison.Ordinal);
         Assert.Contains("--markdown", help, StringComparison.Ordinal);
         var readme = File.ReadAllText(Path.Combine(RepoRoot(), "README.md"));
         Assert.StartsWith("# ai-chat-export\n", readme);
         Assert.Contains("`--markdown` writes the Markdown file", readme, StringComparison.Ordinal);
+        Assert.Contains("terminal-dark", readme, StringComparison.Ordinal);
+        Assert.Contains("terminal-light", readme, StringComparison.Ordinal);
+        Assert.Contains("dark-web", readme, StringComparison.Ordinal);
+        Assert.Contains("light-web", readme, StringComparison.Ordinal);
         Assert.Contains("Up and Down", readme, StringComparison.Ordinal);
         Assert.Contains("Left and Right", readme, StringComparison.Ordinal);
         Assert.Contains("Enter asks for a file name", readme, StringComparison.Ordinal);
