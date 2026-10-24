@@ -12,6 +12,7 @@ internal static class SessionSources
     [
         new("cli", "cursor-cli", "Cursor-CLI", "Cu-CLI"),
         new("ide", "cursor-ide", "Cursor-IDE", "Cu-IDE"),
+        new("cp-cli", "copilot-cli", "Copilot-CLI", "Cp-CLI"),
     ];
 
     public static bool KnownArgument(string argument) => All.Any(item => item.Argument == argument);
@@ -48,11 +49,12 @@ internal sealed record Chat(
     long UpdatedAtMs,
     bool HasStore,
     string Path,
-    string Source = "cli")
+    string Source = "cli",
+    string? TimeLabel = null)
 {
     public string DisplayTitle => string.IsNullOrEmpty(Title) ? Id : Title!;
 
-    public string UpdatedLabel => Catalog.FormatTimestamp(UpdatedAtMs);
+    public string UpdatedLabel => TimeLabel ?? Catalog.FormatTimestamp(UpdatedAtMs);
 
     public string SourceLabel => SessionSources.Column(Source);
 }
@@ -196,22 +198,29 @@ internal static class Catalog
         return chats;
     }
 
-    public static List<Chat> LoadSessions(string chatsRoot, string? projectsRoot, IList<string>? warnings = null)
+    public static List<Chat> LoadSessions(
+        string chatsRoot,
+        string? projectsRoot,
+        IList<string>? warnings = null,
+        string? copilotRoot = null)
     {
         var notes = warnings ?? new List<string>();
         var chats = Load(chatsRoot, notes);
-        if (string.IsNullOrEmpty(projectsRoot) || !Directory.Exists(projectsRoot))
+        if (!string.IsNullOrEmpty(projectsRoot) && Directory.Exists(projectsRoot))
         {
-            return chats;
+            var known = chats.Select(chat => chat.Id).ToHashSet(StringComparer.Ordinal);
+            foreach (var row in LoadIde(projectsRoot, notes))
+            {
+                if (!known.Contains(row.Id))
+                {
+                    chats.Add(row);
+                }
+            }
         }
 
-        var known = chats.Select(chat => chat.Id).ToHashSet(StringComparer.Ordinal);
-        foreach (var row in LoadIde(projectsRoot, notes))
+        if (!string.IsNullOrEmpty(copilotRoot))
         {
-            if (!known.Contains(row.Id))
-            {
-                chats.Add(row);
-            }
+            chats.AddRange(CopilotCatalog.Load(copilotRoot, notes));
         }
 
         SortNewest(chats);

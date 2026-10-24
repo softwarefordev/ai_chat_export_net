@@ -28,6 +28,8 @@ public class EndToEndTests
         Assert.Contains("--markdown", help, StringComparison.Ordinal);
         Assert.Contains("--projects-root", help, StringComparison.Ordinal);
         Assert.Contains("--source", help, StringComparison.Ordinal);
+        Assert.Contains("copilot-cli", help, StringComparison.Ordinal);
+        Assert.Contains("--copilot-root", help, StringComparison.Ordinal);
         var readme = File.ReadAllText(Path.Combine(RepoRoot(), "README.md"));
         Assert.StartsWith("# ai-chat-export\n", readme);
         Assert.Contains("`--markdown` writes the Markdown file", readme, StringComparison.Ordinal);
@@ -43,6 +45,9 @@ public class EndToEndTests
         Assert.Contains("Cu-CLI", readme, StringComparison.Ordinal);
         Assert.Contains("Cu-IDE", readme, StringComparison.Ordinal);
         Assert.Contains("~/.cursor/projects", readme, StringComparison.Ordinal);
+        Assert.Contains("Copilot-CLI", readme, StringComparison.Ordinal);
+        Assert.Contains("Cp-CLI", readme, StringComparison.Ordinal);
+        Assert.Contains("--copilot-root", readme, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -60,7 +65,7 @@ public class EndToEndTests
             Assert.True(File.Exists(exe), exe);
             var stdout = new StringWriter();
             var projects = Path.Combine(root, "no-projects");
-            var code = Exporter.Run(["--id", "demo", "--chats-root", chats, "--projects-root", projects, "--out", outDir]);
+            var code = Exporter.Run(["--id", "demo", "--chats-root", chats, "--projects-root", projects, "--copilot-root", Path.Combine(root, "no-copilot"), "--out", outDir]);
             Assert.Equal(0, code);
             var htmlPath = Path.Combine(outDir, "Fantasy Map Maker.html");
             var page = File.ReadAllText(htmlPath);
@@ -77,6 +82,8 @@ public class EndToEndTests
             process.StartInfo.ArgumentList.Add(chats);
             process.StartInfo.ArgumentList.Add("--projects-root");
             process.StartInfo.ArgumentList.Add(projects);
+            process.StartInfo.ArgumentList.Add("--copilot-root");
+            process.StartInfo.ArgumentList.Add(Path.Combine(root, "no-copilot"));
             process.StartInfo.ArgumentList.Add("--out");
             process.StartInfo.ArgumentList.Add(Path.Combine(root, "exe-out"));
             process.StartInfo.RedirectStandardOutput = true;

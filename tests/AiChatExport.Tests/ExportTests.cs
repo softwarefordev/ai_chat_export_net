@@ -83,7 +83,7 @@ public class ExportTests : IDisposable
         Assert.DoesNotContain("#161616", markdown, StringComparison.Ordinal);
         Assert.DoesNotContain("#f7f7f4", markdown, StringComparison.Ordinal);
         var cliOut = Path.Combine(_out, "cli");
-        Assert.Equal(0, Exporter.Run(["--id", "chat-1", "--chats-root", _chats, "--projects-root", Path.Combine(_root, "no-projects"), "--out", cliOut, "--markdown"]));
+        Assert.Equal(0, Exporter.Run(["--id", "chat-1", "--chats-root", _chats, "--projects-root", Path.Combine(_root, "no-projects"), "--copilot-root", Path.Combine(_root, "no-copilot"), "--out", cliOut, "--markdown"]));
         Assert.True(File.Exists(Path.Combine(cliOut, "Fantasy Map Maker.md")));
         Assert.False(File.Exists(Path.Combine(cliOut, "Fantasy Map Maker.html")));
     }
@@ -312,7 +312,7 @@ public class ExportTests : IDisposable
         foreach (var theme in HtmlRenderer.ThemeNames)
         {
             var dir = Path.Combine(_out, theme);
-            Assert.Equal(0, Exporter.Run(["--id", "chat-1", "--chats-root", _chats, "--projects-root", Path.Combine(_root, "no-projects"), "--out", dir, "--theme", theme]));
+            Assert.Equal(0, Exporter.Run(["--id", "chat-1", "--chats-root", _chats, "--projects-root", Path.Combine(_root, "no-projects"), "--copilot-root", Path.Combine(_root, "no-copilot"), "--out", dir, "--theme", theme]));
             Assert.True(File.Exists(Path.Combine(dir, "Fantasy Map Maker.html")));
         }
 
@@ -403,6 +403,7 @@ public class ExportTests : IDisposable
         var projects = Path.Combine(_root, "projects");
         WriteIde(projects, "room", "River map", "The river is drawn.", _root);
         var sessions = Catalog.LoadSessions(_chats, projects);
+        sessions.Add(new Chat("cp", "Lake map", Path.Combine(_root, "elsewhere"), "elsewhere", 1, true, "p", "cp-cli"));
         var stdout = new StringWriter();
         var code = Exporter.ExportWithPicker(
             sessions,
@@ -434,9 +435,26 @@ public class ExportTests : IDisposable
             sources: SessionSources.Allowed(["cursor-cli", "cursor-ide"]));
         Assert.Equal(0, code);
         var both = stdout.ToString();
-        Assert.Contains("All sources *", both, StringComparison.Ordinal);
+        Assert.Contains("Cursor-CLI *", both, StringComparison.Ordinal);
+        Assert.Contains("Cursor-IDE *", both, StringComparison.Ordinal);
+        Assert.DoesNotContain("All sources *", both, StringComparison.Ordinal);
+        Assert.DoesNotContain("Lake map", both, StringComparison.Ordinal);
         Assert.Contains("Fantasy Map Maker", both, StringComparison.Ordinal);
         Assert.Contains("River map", both, StringComparison.Ordinal);
+
+        stdout = new StringWriter();
+        Exporter.ExportWithPicker(
+            sessions,
+            "terminal-dark",
+            ["s", "esc"],
+            _root,
+            _out,
+            false,
+            _chats,
+            stdout,
+            projectsRoot: projects,
+            sources: SessionSources.Allowed(["cursor-cli", "cursor-ide"]));
+        Assert.Contains("All sources *", stdout.ToString(), StringComparison.Ordinal);
 
         stdout = new StringWriter();
         Exporter.ExportWithPicker(
@@ -464,6 +482,7 @@ public class ExportTests : IDisposable
                 "--source", "cursor-ide",
                 "--chats-root", _chats,
                 "--projects-root", projects,
+                "--copilot-root", Path.Combine(_root, "no-copilot"),
                 "--out", Path.Combine(_out, "filtered"),
             ]));
             Assert.Equal(2, Exporter.Run([

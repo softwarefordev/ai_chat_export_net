@@ -406,6 +406,8 @@ internal static class TranscriptBuilder
         ["Read"] = args => $"Read {ArgString(args, "path")}".TrimEnd(),
         ["Glob"] = args => $"Glob {ArgString(args, "glob_pattern")}".TrimEnd(),
         ["Shell"] = ShellCaption,
+        ["Grep"] = args => $"Grep {ArgString(args, "pattern")}".TrimEnd(),
+        ["Create"] = args => $"Create {ArgString(args, "path")}".TrimEnd(),
     };
 
     public static string Caption(JsonObject part)

@@ -10,9 +10,9 @@ Build the console app and run it with `dotnet run`.
 dotnet run --project src/AiChatExport -- --help
 ```
 
-The list shows Cursor agent chats from `~/.cursor/chats` and Cursor IDE transcripts from `~/.cursor/projects`. Columns are the title, workspace, source, and time. The source column is `Cu-CLI` for an agent chat and `Cu-IDE` for an IDE transcript. Up and Down move. Left and Right switch All chats and This workspace. `s` switches All sources, Cursor-CLI, and Cursor-IDE. Enter asks for a file name. The chat list stays on screen. Esc closes. `i` shows the selected chat id.
+The list shows Cursor agent chats from `~/.cursor/chats`, Cursor IDE transcripts from `~/.cursor/projects`, and Copilot CLI sessions from `~/.copilot`. Columns are the title, workspace, source, and time. The source column is `Cu-CLI` for an agent chat, `Cu-IDE` for an IDE transcript, and `Cp-CLI` for a Copilot CLI session. Up and Down move. Left and Right switch All chats and This workspace. `s` switches All sources, Cursor-CLI, Cursor-IDE, and Copilot-CLI. Enter asks for a file name. The chat list stays on screen. Esc closes. `i` shows the selected chat id.
 
-`--source cursor-cli` or `--source cursor-ide` limits the list to one store. Repeat `--source` to include both. `--projects-root` selects the IDE tree.
+`--source cursor-cli`, `--source cursor-ide`, or `--source copilot-cli` limits the list to one store. Repeat `--source` to include more. `--projects-root` selects the IDE tree. `--copilot-root` selects the Copilot CLI tree.
 
 ```bash
 dotnet run --project src/AiChatExport -- --id <chat-id> --out ./exports
@@ -20,4 +20,4 @@ dotnet run --project src/AiChatExport -- --id <chat-id> --markdown
 dotnet run --project src/AiChatExport -- --id <chat-id> --name ./exports/session.html
 ```
 
-`--name` writes that file path instead of a title-named file. `--name` requires `--id`. Passing `--name` with `--out` is an error. The tool only reads the chat store and the IDE transcript.
+`--name` writes that file path instead of a title-named file. `--name` requires `--id`. Passing `--name` with `--out` is an error. The tool only reads the chat store, the IDE transcript, and the Copilot CLI store.

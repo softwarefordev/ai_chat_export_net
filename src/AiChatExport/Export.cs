@@ -98,7 +98,8 @@ internal static class Exporter
         TimeSpan? activityInterval = null,
         bool? stderrIsTerminal = null,
         string? projectsRoot = null,
-        IReadOnlySet<string>? sources = null)
+        IReadOnlySet<string>? sources = null,
+        string? copilotRoot = null)
     {
         var output = stdout ?? Console.Out;
         var error = stderr ?? Console.Error;
@@ -118,7 +119,7 @@ internal static class Exporter
         using (var spin = new Activity(error, showActivity, activityInterval))
         {
             spin.Start();
-            chats = Catalog.LoadSessions(chatsRoot, projectsRoot, warnings);
+            chats = Catalog.LoadSessions(chatsRoot, projectsRoot, warnings, copilotRoot);
             if (sources is not null)
             {
                 chats = chats.Where(chat => sources.Contains(chat.Source)).ToList();
@@ -149,10 +150,28 @@ internal static class Exporter
             {
                 try
                 {
-                    var conversation = chat.Source == "ide"
-                        ? IdeTranscript.Load(chat.Path)
-                        : Store.Load(Path.Combine(chat.Path, "store.db"));
-                    var prompts = chat.Source == "ide" ? [] : Prompts(chat.Path);
+                    Conversation conversation;
+                    IReadOnlyList<string> prompts;
+                    if (chat.Source == "cp-cli")
+                    {
+                        var loaded = CopilotTranscript.Load(chat.Path);
+                        conversation = loaded.Conversation;
+                        prompts = loaded.Prompts;
+                        if (loaded.Warning is not null)
+                        {
+                            error.Write(loaded.Warning + "\n");
+                        }
+                    }
+                    else if (chat.Source == "ide")
+                    {
+                        conversation = IdeTranscript.Load(chat.Path);
+                        prompts = [];
+                    }
+                    else
+                    {
+                        conversation = Store.Load(Path.Combine(chat.Path, "store.db"));
+                        prompts = Prompts(chat.Path);
+                    }
                     if (conversation.Messages.Count == 0)
                     {
                         failure = $"Chat has no transcript: {chatId}";
@@ -233,7 +252,8 @@ internal static class Exporter
         bool writeMarkdown = false,
         Action<string>? paint = null,
         string? projectsRoot = null,
-        IReadOnlySet<string>? sources = null)
+        IReadOnlySet<string>? sources = null,
+        string? copilotRoot = null)
     {
         int Body()
         {
@@ -269,7 +289,8 @@ internal static class Exporter
                     result.FileName,
                     stdout: stdout,
                     projectsRoot: projectsRoot,
-                    sources: sources);
+                    sources: sources,
+                    copilotRoot: copilotRoot);
             }
             catch (PickerInterruptException)
             {
@@ -293,6 +314,7 @@ internal static class Exporter
         string? name = null;
         string? chatsRoot = null;
         string? projectsRoot = null;
+        string? copilotRoot = null;
         var sourceArgs = new List<string>();
 
         for (var index = 0; index < argv.Length; index++)
@@ -386,6 +408,14 @@ internal static class Exporter
                     return 2;
                 }
             }
+            else if (arg == "--copilot-root" || arg.StartsWith("--copilot-root=", StringComparison.Ordinal))
+            {
+                copilotRoot = Value();
+                if (copilotRoot is null)
+                {
+                    return 2;
+                }
+            }
             else if (arg == "--source" || arg.StartsWith("--source=", StringComparison.Ordinal))
             {
                 var source = Value();
@@ -418,6 +448,7 @@ internal static class Exporter
 
         chatsRoot ??= Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cursor", "chats");
         projectsRoot ??= Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cursor", "projects");
+        copilotRoot ??= Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".copilot");
         outDir ??= Directory.GetCurrentDirectory();
         var sources = SessionSources.Allowed(sourceArgs);
         if (!string.IsNullOrEmpty(chatId))
@@ -433,11 +464,12 @@ internal static class Exporter
                 markdown,
                 outputPath: name,
                 projectsRoot: projectsRoot,
-                sources: sources);
+                sources: sources,
+                copilotRoot: copilotRoot);
         }
 
         var warnings = new List<string>();
-        var chats = Catalog.LoadSessions(chatsRoot, projectsRoot, warnings);
+        var chats = Catalog.LoadSessions(chatsRoot, projectsRoot, warnings, copilotRoot);
         foreach (var note in warnings)
         {
             Console.Error.WriteLine(note);
@@ -486,7 +518,8 @@ internal static class Exporter
                 markdown,
                 picked.FileName,
                 projectsRoot: projectsRoot,
-                sources: sources);
+                sources: sources,
+                copilotRoot: copilotRoot);
         }
         finally
         {
@@ -496,9 +529,9 @@ internal static class Exporter
 
     public const string HelpText =
         """
-        usage: ai-chat-export [--id ID] [--theme {terminal-dark,terminal-light,dark-web,light-web}] [--tools] [--verbose] [--detail] [--markdown] [--out DIR] [--name PATH] [--chats-root DIR] [--projects-root DIR] [--source {cursor-cli,cursor-ide}]
+        usage: ai-chat-export [--id ID] [--theme {terminal-dark,terminal-light,dark-web,light-web}] [--tools] [--verbose] [--detail] [--markdown] [--out DIR] [--name PATH] [--chats-root DIR] [--projects-root DIR] [--copilot-root DIR] [--source {cursor-cli,cursor-ide,copilot-cli}]
 
-        Export a Cursor agent session to HTML. Pass --markdown to write Markdown instead. The picker lists Cursor agent chats and Cursor IDE transcripts. In the picker, Enter asks for a file name. The title file name is the default. s switches the source filter.
+        Export a Cursor agent session or a Copilot CLI session to HTML. Pass --markdown to write Markdown instead. The picker lists Cursor agent chats, Cursor IDE transcripts, and Copilot CLI sessions. In the picker, Enter asks for a file name. The title file name is the default. s switches the source filter.
 
         options:
           --id ID             Chat id to export. Omit to open the picker.
@@ -512,8 +545,9 @@ internal static class Exporter
           --name PATH         File path to write when --id is set, including the directory and extension. Replaces --out. Requires --id.
           --chats-root DIR    Agent chat catalog. Defaults to ~/.cursor/chats.
           --projects-root DIR Cursor IDE projects root. Defaults to ~/.cursor/projects.
-          --source {cursor-cli,cursor-ide}
-                              Limit the list to one store. Repeat to include both. The picker column shows Cu-CLI or Cu-IDE.
+          --copilot-root DIR  Copilot CLI root. Defaults to ~/.copilot.
+          --source {cursor-cli,cursor-ide,copilot-cli}
+                              Limit the list to one store. Repeat to include more. The picker column shows Cu-CLI, Cu-IDE, or Cp-CLI.
           -h, --help          show this help message and exit
 
         """;
