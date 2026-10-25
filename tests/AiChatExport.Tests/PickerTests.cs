@@ -242,13 +242,15 @@ public class PickerTests : IDisposable
         var ide = Row("River map", "Other", "ide-1", new DateTime(2026, 8, 15, 16, 40, 0), "ide");
         var cli = Row("Fantasy Map Maker", _launch, "cli-1", new DateTime(2026, 8, 15, 16, 42, 0));
         var copilot = Row("Lake map", "Other", "cp-1", new DateTime(2026, 8, 15, 16, 30, 0), "cp-cli");
+        var copilotIde = Row("Shelf map", "Other", "cp-ide-1", new DateTime(2026, 8, 15, 16, 20, 0), "cp-ide");
         var frames = new List<string>();
-        Picker.Run([ide, cli, copilot], "terminal-dark", ["s", "S", "s", "s", "esc"], _launch, frames.Add, width: 80);
+        Picker.Run([ide, cli, copilot, copilotIde], "terminal-dark", ["s", "S", "s", "s", "s", "esc"], _launch, frames.Add, width: 80);
         Assert.Contains("s source", frames[0], StringComparison.Ordinal);
         Assert.Contains("i id", frames[0], StringComparison.Ordinal);
         Assert.Contains("Enter names the file", frames[0], StringComparison.Ordinal);
         Assert.Contains("All sources *", frames[0], StringComparison.Ordinal);
         Assert.Contains("Copilot-CLI", frames[0], StringComparison.Ordinal);
+        Assert.Contains("Copilot-IDE", frames[0], StringComparison.Ordinal);
         Assert.Contains("Cursor-CLI *", frames[1], StringComparison.Ordinal);
         Assert.DoesNotContain("River map", frames[1], StringComparison.Ordinal);
         Assert.Contains("Cursor-IDE *", frames[2], StringComparison.Ordinal);
@@ -257,7 +259,10 @@ public class PickerTests : IDisposable
         Assert.Contains("Copilot-CLI *", frames[3], StringComparison.Ordinal);
         Assert.Contains("Lake map", frames[3], StringComparison.Ordinal);
         Assert.DoesNotContain("River map", frames[3], StringComparison.Ordinal);
-        Assert.Contains("All sources *", frames[4], StringComparison.Ordinal);
+        Assert.Contains("Copilot-IDE *", frames[4], StringComparison.Ordinal);
+        Assert.Contains("Shelf map", frames[4], StringComparison.Ordinal);
+        Assert.DoesNotContain("Lake map", frames[4], StringComparison.Ordinal);
+        Assert.Contains("All sources *", frames[5], StringComparison.Ordinal);
 
         frames.Clear();
         Picker.Run([ide, cli], "terminal-dark", ["right", "s", "esc"], _launch, frames.Add, width: 80);

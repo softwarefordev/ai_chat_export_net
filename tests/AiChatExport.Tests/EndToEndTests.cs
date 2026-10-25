@@ -29,7 +29,10 @@ public class EndToEndTests
         Assert.Contains("--projects-root", help, StringComparison.Ordinal);
         Assert.Contains("--source", help, StringComparison.Ordinal);
         Assert.Contains("copilot-cli", help, StringComparison.Ordinal);
+        Assert.Contains("copilot-ide", help, StringComparison.Ordinal);
         Assert.Contains("--copilot-root", help, StringComparison.Ordinal);
+        Assert.Contains("--vscode-root", help, StringComparison.Ordinal);
+        Assert.Contains("--copilot-ide-root", help, StringComparison.Ordinal);
         var readme = File.ReadAllText(Path.Combine(RepoRoot(), "README.md"));
         Assert.StartsWith("# ai-chat-export\n", readme);
         Assert.Contains("`--markdown` writes the Markdown file", readme, StringComparison.Ordinal);
@@ -47,7 +50,13 @@ public class EndToEndTests
         Assert.Contains("~/.cursor/projects", readme, StringComparison.Ordinal);
         Assert.Contains("Copilot-CLI", readme, StringComparison.Ordinal);
         Assert.Contains("Cp-CLI", readme, StringComparison.Ordinal);
+        Assert.Contains("Copilot-IDE", readme, StringComparison.Ordinal);
+        Assert.Contains("Cp-IDE", readme, StringComparison.Ordinal);
+        Assert.Contains("copilot-ide", readme, StringComparison.Ordinal);
         Assert.Contains("--copilot-root", readme, StringComparison.Ordinal);
+        Assert.Contains("--vscode-root", readme, StringComparison.Ordinal);
+        Assert.Contains("--copilot-ide-root", readme, StringComparison.Ordinal);
+        Assert.Contains("HTML is the default.", readme, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -65,7 +74,7 @@ public class EndToEndTests
             Assert.True(File.Exists(exe), exe);
             var stdout = new StringWriter();
             var projects = Path.Combine(root, "no-projects");
-            var code = Exporter.Run(["--id", "demo", "--chats-root", chats, "--projects-root", projects, "--copilot-root", Path.Combine(root, "no-copilot"), "--out", outDir]);
+            var code = Exporter.Run(["--id", "demo", "--chats-root", chats, "--projects-root", projects, "--copilot-root", Path.Combine(root, "no-copilot"), "--vscode-root", Path.Combine(root, "no-vscode"), "--copilot-ide-root", Path.Combine(root, "no-copilot-ide"), "--out", outDir]);
             Assert.Equal(0, code);
             var htmlPath = Path.Combine(outDir, "Fantasy Map Maker.html");
             var page = File.ReadAllText(htmlPath);
@@ -84,6 +93,10 @@ public class EndToEndTests
             process.StartInfo.ArgumentList.Add(projects);
             process.StartInfo.ArgumentList.Add("--copilot-root");
             process.StartInfo.ArgumentList.Add(Path.Combine(root, "no-copilot"));
+            process.StartInfo.ArgumentList.Add("--vscode-root");
+            process.StartInfo.ArgumentList.Add(Path.Combine(root, "no-vscode"));
+            process.StartInfo.ArgumentList.Add("--copilot-ide-root");
+            process.StartInfo.ArgumentList.Add(Path.Combine(root, "no-copilot-ide"));
             process.StartInfo.ArgumentList.Add("--out");
             process.StartInfo.ArgumentList.Add(Path.Combine(root, "exe-out"));
             process.StartInfo.RedirectStandardOutput = true;

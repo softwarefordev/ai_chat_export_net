@@ -1,6 +1,6 @@
 # ai-chat-export
 
-Export a local Cursor agent chat to an HTML page. The page follows the chat: the prompt you typed, then the assistant's visible text. The user section is labeled User. Consecutive assistant replies share one Agent heading until the next prompt. The HTML page lists user turns, and each entry jumps to that turn. HTML is the default. HTML uses terminal-dark unless you name terminal-light, dark-web, or light-web. `--markdown` writes the Markdown file instead of the HTML page.
+Export a local Cursor or Copilot chat to an HTML page. The page follows the chat: the prompt you typed, then the assistant's visible text. The user section is labeled User. Consecutive assistant replies share one Agent heading until the next prompt. The HTML page lists user turns, and each entry jumps to that turn. HTML is the default. HTML uses terminal-dark unless you name terminal-light, dark-web, or light-web. `--markdown` writes the Markdown file instead of the HTML page.
 
 `--detail` adds the conversation summary and Cursor command blocks after the query. `--tools` adds one caption per tool call. `--verbose` adds those captions plus system text, injected context, reasoning, and raw tool output.
 
@@ -10,9 +10,9 @@ Build the console app and run it with `dotnet run`.
 dotnet run --project src/AiChatExport -- --help
 ```
 
-The list shows Cursor agent chats from `~/.cursor/chats`, Cursor IDE transcripts from `~/.cursor/projects`, and Copilot CLI sessions from `~/.copilot`. Columns are the title, workspace, source, and time. The source column is `Cu-CLI` for an agent chat, `Cu-IDE` for an IDE transcript, and `Cp-CLI` for a Copilot CLI session. Up and Down move. Left and Right switch All chats and This workspace. `s` switches All sources, Cursor-CLI, Cursor-IDE, and Copilot-CLI. Enter asks for a file name. The chat list stays on screen. Esc closes. `i` shows the selected chat id.
+The list shows Cursor agent chats from `~/.cursor/chats`, Cursor IDE transcripts from `~/.cursor/projects`, Copilot CLI sessions from `~/.copilot`, VS Code Copilot chats from the Visual Studio Code user directory, and Rider or Visual Studio Copilot chats from the local github-copilot directory. Columns are the title, workspace, source, and time. The source column is `Cu-CLI` for an agent chat, `Cu-IDE` for an IDE transcript, `Cp-CLI` for a Copilot CLI session, and `Cp-IDE` for a Copilot IDE session. Up and Down move. Left and Right switch All chats and This workspace. `s` switches All sources, Cursor-CLI, Cursor-IDE, Copilot-CLI, and Copilot-IDE. Enter asks for a file name. The chat list stays on screen. Esc closes. `i` shows the selected chat id.
 
-`--source cursor-cli`, `--source cursor-ide`, or `--source copilot-cli` limits the list to one store. Repeat `--source` to include more. `--projects-root` selects the IDE tree. `--copilot-root` selects the Copilot CLI tree.
+`--source cursor-cli`, `--source cursor-ide`, `--source copilot-cli`, or `--source copilot-ide` limits the list to one store. Repeat `--source` to include more. `--projects-root` selects the IDE tree. `--copilot-root` selects the Copilot CLI tree. `--vscode-root` selects the VS Code user directory. `--copilot-ide-root` selects the Rider and Visual Studio Copilot directory.
 
 ```bash
 dotnet run --project src/AiChatExport -- --id <chat-id> --out ./exports
@@ -20,4 +20,4 @@ dotnet run --project src/AiChatExport -- --id <chat-id> --markdown
 dotnet run --project src/AiChatExport -- --id <chat-id> --name ./exports/session.html
 ```
 
-`--name` writes that file path instead of a title-named file. `--name` requires `--id`. Passing `--name` with `--out` is an error. The tool only reads the chat store, the IDE transcript, and the Copilot CLI store.
+`--name` writes that file path instead of a title-named file. `--name` requires `--id`. Passing `--name` with `--out` is an error. The tool only reads Cursor chat stores and Copilot session stores.

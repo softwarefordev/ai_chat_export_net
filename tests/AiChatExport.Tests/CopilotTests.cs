@@ -14,12 +14,16 @@ public class CopilotTests : IDisposable
     [Fact]
     public void Registry_labels_keep_the_cursor_columns()
     {
-        Assert.Equal(["cli", "ide", "cp-cli"], SessionSources.All.Select(item => item.Id).ToList());
+        Assert.Equal(["cli", "ide", "cp-cli", "cp-ide"], SessionSources.All.Select(item => item.Id).ToList());
         Assert.Equal("Cu-CLI", SessionSources.Column("cli"));
         Assert.Equal("Cu-IDE", SessionSources.Column("ide"));
+        Assert.Equal("Cp-CLI", SessionSources.Column("cp-cli"));
         var chat = new Chat("cp-1", "Map", "C:/work", "work", 0, true, ".", "cp-cli");
         Assert.Equal("cp-cli", chat.Source);
         Assert.Equal("Cp-CLI", chat.SourceLabel);
+        var ide = new Chat("cp-ide-1", "Map", "C:/work", "work", 0, true, ".", "cp-ide");
+        Assert.Equal("cp-ide", ide.Source);
+        Assert.Equal("Cp-IDE", ide.SourceLabel);
         Assert.Equal(6, Picker.SourceWidth);
     }
 
@@ -254,6 +258,8 @@ public class CopilotTests : IDisposable
                 "--chats-root", chats,
                 "--projects-root", Path.Combine(_root, "missing-projects"),
                 "--copilot-root", copilot,
+                "--vscode-root", Path.Combine(_root, "no-vscode"),
+                "--copilot-ide-root", Path.Combine(_root, "no-copilot-ide"),
                 "--out", Path.Combine(_root, "excluded"),
             ]));
             Assert.Equal(2, Exporter.Run([

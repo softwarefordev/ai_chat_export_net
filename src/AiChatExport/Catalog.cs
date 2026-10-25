@@ -13,6 +13,7 @@ internal static class SessionSources
         new("cli", "cursor-cli", "Cursor-CLI", "Cu-CLI"),
         new("ide", "cursor-ide", "Cursor-IDE", "Cu-IDE"),
         new("cp-cli", "copilot-cli", "Copilot-CLI", "Cp-CLI"),
+        new("cp-ide", "copilot-ide", "Copilot-IDE", "Cp-IDE"),
     ];
 
     public static bool KnownArgument(string argument) => All.Any(item => item.Argument == argument);
@@ -202,7 +203,10 @@ internal static class Catalog
         string chatsRoot,
         string? projectsRoot,
         IList<string>? warnings = null,
-        string? copilotRoot = null)
+        string? copilotRoot = null,
+        string? vscodeRoot = null,
+        string? copilotIdeRoot = null,
+        bool includeEmpty = false)
     {
         var notes = warnings ?? new List<string>();
         var chats = Load(chatsRoot, notes);
@@ -221,6 +225,27 @@ internal static class Catalog
         if (!string.IsNullOrEmpty(copilotRoot))
         {
             chats.AddRange(CopilotCatalog.Load(copilotRoot, notes));
+        }
+
+        if (!string.IsNullOrEmpty(vscodeRoot))
+        {
+            chats.AddRange(CopilotIde.LoadVscode(vscodeRoot, notes, includeEmpty));
+        }
+
+        if (!string.IsNullOrEmpty(copilotIdeRoot))
+        {
+            chats.AddRange(CopilotIde.LoadNitrite(copilotIdeRoot, notes, includeEmpty, copilotRoot));
+        }
+
+        if (!string.IsNullOrEmpty(vscodeRoot) && !string.IsNullOrEmpty(copilotRoot))
+        {
+            chats.AddRange(CopilotIde.LoadAgentHost(vscodeRoot, copilotRoot, notes, includeEmpty));
+        }
+
+        if (!string.IsNullOrEmpty(copilotRoot))
+        {
+            var known = chats.Select(chat => chat.Id).ToHashSet(StringComparer.Ordinal);
+            chats.AddRange(CopilotCatalog.LoadUnlisted(copilotRoot, known, notes));
         }
 
         SortNewest(chats);

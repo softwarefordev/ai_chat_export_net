@@ -99,7 +99,9 @@ internal static class Exporter
         bool? stderrIsTerminal = null,
         string? projectsRoot = null,
         IReadOnlySet<string>? sources = null,
-        string? copilotRoot = null)
+        string? copilotRoot = null,
+        string? vscodeRoot = null,
+        string? copilotIdeRoot = null)
     {
         var output = stdout ?? Console.Out;
         var error = stderr ?? Console.Error;
@@ -119,7 +121,7 @@ internal static class Exporter
         using (var spin = new Activity(error, showActivity, activityInterval))
         {
             spin.Start();
-            chats = Catalog.LoadSessions(chatsRoot, projectsRoot, warnings, copilotRoot);
+            chats = Catalog.LoadSessions(chatsRoot, projectsRoot, warnings, copilotRoot, vscodeRoot, copilotIdeRoot, includeEmpty: true);
             if (sources is not null)
             {
                 chats = chats.Where(chat => sources.Contains(chat.Source)).ToList();
@@ -161,6 +163,12 @@ internal static class Exporter
                         {
                             error.Write(loaded.Warning + "\n");
                         }
+                    }
+                    else if (chat.Source == "cp-ide")
+                    {
+                        var loaded = CopilotIde.LoadConversation(chat.Path, chat.Id);
+                        conversation = loaded.Conversation;
+                        prompts = loaded.Prompts;
                     }
                     else if (chat.Source == "ide")
                     {
@@ -218,7 +226,7 @@ internal static class Exporter
                         }
                     }
                 }
-                catch (Exception exc) when (exc is IOException or InvalidDataException or KeyNotFoundException or JsonException or FormatException or Microsoft.Data.Sqlite.SqliteException)
+                catch (Exception exc) when (exc is IOException or InvalidDataException or KeyNotFoundException or JsonException or FormatException or DecoderFallbackException or Microsoft.Data.Sqlite.SqliteException)
                 {
                     failure = $"Chat has no transcript: {chatId} ({exc.Message})";
                 }
@@ -253,7 +261,9 @@ internal static class Exporter
         Action<string>? paint = null,
         string? projectsRoot = null,
         IReadOnlySet<string>? sources = null,
-        string? copilotRoot = null)
+        string? copilotRoot = null,
+        string? vscodeRoot = null,
+        string? copilotIdeRoot = null)
     {
         int Body()
         {
@@ -290,7 +300,9 @@ internal static class Exporter
                     stdout: stdout,
                     projectsRoot: projectsRoot,
                     sources: sources,
-                    copilotRoot: copilotRoot);
+                    copilotRoot: copilotRoot,
+                    vscodeRoot: vscodeRoot,
+                    copilotIdeRoot: copilotIdeRoot);
             }
             catch (PickerInterruptException)
             {
@@ -315,6 +327,8 @@ internal static class Exporter
         string? chatsRoot = null;
         string? projectsRoot = null;
         string? copilotRoot = null;
+        string? vscodeRoot = null;
+        string? copilotIdeRoot = null;
         var sourceArgs = new List<string>();
 
         for (var index = 0; index < argv.Length; index++)
@@ -416,6 +430,22 @@ internal static class Exporter
                     return 2;
                 }
             }
+            else if (arg == "--vscode-root" || arg.StartsWith("--vscode-root=", StringComparison.Ordinal))
+            {
+                vscodeRoot = Value();
+                if (vscodeRoot is null)
+                {
+                    return 2;
+                }
+            }
+            else if (arg == "--copilot-ide-root" || arg.StartsWith("--copilot-ide-root=", StringComparison.Ordinal))
+            {
+                copilotIdeRoot = Value();
+                if (copilotIdeRoot is null)
+                {
+                    return 2;
+                }
+            }
             else if (arg == "--source" || arg.StartsWith("--source=", StringComparison.Ordinal))
             {
                 var source = Value();
@@ -449,6 +479,8 @@ internal static class Exporter
         chatsRoot ??= Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cursor", "chats");
         projectsRoot ??= Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cursor", "projects");
         copilotRoot ??= Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".copilot");
+        vscodeRoot ??= CopilotIde.VscodeUserDirectory();
+        copilotIdeRoot ??= CopilotIde.GithubCopilotDirectory();
         outDir ??= Directory.GetCurrentDirectory();
         var sources = SessionSources.Allowed(sourceArgs);
         if (!string.IsNullOrEmpty(chatId))
@@ -465,11 +497,13 @@ internal static class Exporter
                 outputPath: name,
                 projectsRoot: projectsRoot,
                 sources: sources,
-                copilotRoot: copilotRoot);
+                copilotRoot: copilotRoot,
+                vscodeRoot: vscodeRoot,
+                copilotIdeRoot: copilotIdeRoot);
         }
 
         var warnings = new List<string>();
-        var chats = Catalog.LoadSessions(chatsRoot, projectsRoot, warnings, copilotRoot);
+        var chats = Catalog.LoadSessions(chatsRoot, projectsRoot, warnings, copilotRoot, vscodeRoot, copilotIdeRoot);
         foreach (var note in warnings)
         {
             Console.Error.WriteLine(note);
@@ -519,7 +553,9 @@ internal static class Exporter
                 picked.FileName,
                 projectsRoot: projectsRoot,
                 sources: sources,
-                copilotRoot: copilotRoot);
+                copilotRoot: copilotRoot,
+                vscodeRoot: vscodeRoot,
+                copilotIdeRoot: copilotIdeRoot);
         }
         finally
         {
@@ -529,9 +565,9 @@ internal static class Exporter
 
     public const string HelpText =
         """
-        usage: ai-chat-export [--id ID] [--theme {terminal-dark,terminal-light,dark-web,light-web}] [--tools] [--verbose] [--detail] [--markdown] [--out DIR] [--name PATH] [--chats-root DIR] [--projects-root DIR] [--copilot-root DIR] [--source {cursor-cli,cursor-ide,copilot-cli}]
+        usage: ai-chat-export [--id ID] [--theme {terminal-dark,terminal-light,dark-web,light-web}] [--tools] [--verbose] [--detail] [--markdown] [--out DIR] [--name PATH] [--chats-root DIR] [--projects-root DIR] [--copilot-root DIR] [--vscode-root DIR] [--copilot-ide-root DIR] [--source {cursor-cli,cursor-ide,copilot-cli,copilot-ide}]
 
-        Export a Cursor agent session or a Copilot CLI session to HTML. Pass --markdown to write Markdown instead. The picker lists Cursor agent chats, Cursor IDE transcripts, and Copilot CLI sessions. In the picker, Enter asks for a file name. The title file name is the default. s switches the source filter.
+        Export a Cursor or Copilot session to HTML. Pass --markdown to write Markdown instead. The picker lists Cursor agent chats, Cursor IDE transcripts, Copilot CLI sessions, and Copilot IDE sessions. In the picker, Enter asks for a file name. The title file name is the default. s switches the source filter.
 
         options:
           --id ID             Chat id to export. Omit to open the picker.
@@ -546,8 +582,11 @@ internal static class Exporter
           --chats-root DIR    Agent chat catalog. Defaults to ~/.cursor/chats.
           --projects-root DIR Cursor IDE projects root. Defaults to ~/.cursor/projects.
           --copilot-root DIR  Copilot CLI root. Defaults to ~/.copilot.
-          --source {cursor-cli,cursor-ide,copilot-cli}
-                              Limit the list to one store. Repeat to include more. The picker column shows Cu-CLI, Cu-IDE, or Cp-CLI.
+          --vscode-root DIR   VS Code user directory for Copilot IDE sessions. Defaults to the platform Code User directory.
+          --copilot-ide-root DIR
+                              Rider and Visual Studio Copilot directory. Defaults to the platform github-copilot directory.
+          --source {cursor-cli,cursor-ide,copilot-cli,copilot-ide}
+                              Limit the list to one store. Repeat to include more. The picker column shows Cu-CLI, Cu-IDE, Cp-CLI, or Cp-IDE.
           -h, --help          show this help message and exit
 
         """;

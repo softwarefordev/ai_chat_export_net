@@ -146,6 +146,177 @@ internal static class CopilotCatalog
 
         return (0, collapsed);
     }
+
+    public static Chat? SessionFromEvents(string directory, IList<string> notes, string source = "cp-cli")
+    {
+        var log = Path.Combine(directory, "events.jsonl");
+        if (!File.Exists(log))
+        {
+            return null;
+        }
+
+        var cwd = "";
+        var firstLine = "";
+        var latest = "";
+        var hasTurn = false;
+        try
+        {
+            foreach (var line in File.ReadLines(log, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true)))
+            {
+                if (string.IsNullOrWhiteSpace(line))
+                {
+                    continue;
+                }
+
+                JsonDocument document;
+                try
+                {
+                    document = JsonDocument.Parse(line);
+                }
+                catch (JsonException)
+                {
+                    continue;
+                }
+
+                using (document)
+                {
+                    var root = document.RootElement;
+                    if (root.ValueKind != JsonValueKind.Object)
+                    {
+                        continue;
+                    }
+
+                    if (root.TryGetProperty("timestamp", out var stampNode)
+                        && stampNode.ValueKind == JsonValueKind.String
+                        && !string.IsNullOrWhiteSpace(stampNode.GetString()))
+                    {
+                        latest = stampNode.GetString()!.Trim();
+                    }
+
+                    var kind = root.TryGetProperty("type", out var typeNode) ? typeNode.GetString() : null;
+                    var data = root.TryGetProperty("data", out var dataNode) && dataNode.ValueKind == JsonValueKind.Object
+                        ? dataNode
+                        : default;
+                    if (kind == "session.start" && cwd.Length == 0
+                        && data.ValueKind == JsonValueKind.Object
+                        && data.TryGetProperty("context", out var context)
+                        && context.ValueKind == JsonValueKind.Object
+                        && context.TryGetProperty("cwd", out var cwdNode)
+                        && cwdNode.ValueKind == JsonValueKind.String)
+                    {
+                        cwd = cwdNode.GetString() ?? "";
+                    }
+                    else if (kind == "user.message")
+                    {
+                        var text = EventBody(data);
+                        if (text.Length > 0)
+                        {
+                            hasTurn = true;
+                            if (firstLine.Length == 0)
+                            {
+                                firstLine = text.Split('\n', 2)[0].Trim();
+                            }
+                        }
+                    }
+                    else if (kind == "assistant.message" && EventBody(data).Length > 0)
+                    {
+                        hasTurn = true;
+                    }
+                }
+            }
+        }
+        catch (Exception exc) when (exc is IOException or DecoderFallbackException or ArgumentException)
+        {
+            notes.Add($"Unreadable Copilot events {Path.GetFileName(directory)}: {exc.Message}");
+            return null;
+        }
+
+        if (!hasTurn)
+        {
+            return null;
+        }
+
+        var (updatedMs, timeLabel) = Updated(latest);
+        if (updatedMs == 0)
+        {
+            updatedMs = new DateTimeOffset(File.GetLastWriteTimeUtc(log)).ToUnixTimeMilliseconds();
+            timeLabel = null;
+        }
+
+        return new Chat(
+            Path.GetFileName(directory),
+            string.IsNullOrWhiteSpace(firstLine) ? null : firstLine,
+            cwd,
+            cwd.Length == 0 ? "" : Catalog.WorkspaceFolder(cwd),
+            updatedMs,
+            true,
+            directory,
+            source,
+            timeLabel);
+    }
+
+    public static List<Chat> LoadUnlisted(string root, HashSet<string> skip, IList<string> notes)
+    {
+        var state = Path.Combine(root, "session-state");
+        if (!Directory.Exists(state))
+        {
+            return [];
+        }
+
+        var rows = new List<Chat>();
+        foreach (var child in Directory.EnumerateDirectories(state))
+        {
+            var name = Path.GetFileName(child);
+            if (name.StartsWith('.') || skip.Contains(name))
+            {
+                continue;
+            }
+
+            var chat = SessionFromEvents(child, notes);
+            if (chat is not null)
+            {
+                rows.Add(chat);
+            }
+        }
+
+        return rows;
+    }
+
+    private static string EventBody(JsonElement data)
+    {
+        if (data.ValueKind != JsonValueKind.Object || !data.TryGetProperty("content", out var content))
+        {
+            return "";
+        }
+
+        if (content.ValueKind == JsonValueKind.String)
+        {
+            return (content.GetString() ?? "").Trim();
+        }
+
+        if (content.ValueKind != JsonValueKind.Array)
+        {
+            return "";
+        }
+
+        var parts = new List<string>();
+        foreach (var item in content.EnumerateArray())
+        {
+            if (item.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(item.GetString()))
+            {
+                parts.Add(item.GetString()!.Trim());
+            }
+            else if (item.ValueKind == JsonValueKind.Object
+                && item.TryGetProperty("text", out var text)
+                && text.ValueKind == JsonValueKind.String
+                && !string.IsNullOrWhiteSpace(text.GetString()))
+            {
+                parts.Add(text.GetString()!.Trim());
+            }
+        }
+
+        return string.Join("\n\n", parts);
+    }
 }
 
 internal static class CopilotTranscript
